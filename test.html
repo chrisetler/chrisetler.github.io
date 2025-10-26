@@ -4,6 +4,67 @@
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/aframe-extras/dist/aframe-extras.min.js"></script>
+
+
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://unpkg.com/aframe-extras/dist/aframe-extras.min.js"></script>
+
+  <script>
+    AFRAME.registerComponent('menu-toggle', {
+      init() {
+        this.panel = document.querySelector('#menuPanel');
+        this.camera = document.querySelector('[camera]');
+        this.visible = false;
+        this.toggle = this.toggle.bind(this);
+
+        // Keyboard: Space
+        this.onKey = (e) => { if (e.code === 'Space') this.toggle(); };
+        window.addEventListener('keydown', this.onKey);
+
+        // Controller: A button
+        const right = document.querySelector('#rightHand');
+        if (right) right.addEventListener('abuttondown', this.toggle);
+      },
+      remove() {
+        window.removeEventListener('keydown', this.onKey);
+        const right = document.querySelector('#rightHand');
+        if (right) right.removeEventListener('abuttondown', this.toggle);
+      },
+      toggle() {
+        this.visible = !this.visible;
+
+        if (this.visible) {
+          // Find camera world position and facing direction
+          const camObj = this.camera.object3D;
+          const worldPos = new THREE.Vector3();
+          const worldDir = new THREE.Vector3();
+          camObj.getWorldPosition(worldPos);
+          camObj.getWorldDirection(worldDir);
+
+          // Offset 2 meters in front of camera
+          const spawnPos = worldPos.add(worldDir.multiplyScalar(-1));
+          this.panel.setAttribute('position', spawnPos);
+
+          // Face the panel toward the camera
+          const rotation = new THREE.Euler().setFromQuaternion(
+            new THREE.Quaternion().setFromRotationMatrix(
+              new THREE.Matrix4().lookAt(spawnPos, worldPos, new THREE.Vector3(0, 1, 0))
+            )
+          );
+          this.panel.setAttribute('rotation', {
+            x: THREE.MathUtils.radToDeg(rotation.x),
+            y: THREE.MathUtils.radToDeg(rotation.y),
+            z: THREE.MathUtils.radToDeg(rotation.z)
+          });
+        }
+
+        this.panel.setAttribute('visible', this.visible);
+        console.log(`Menu ${this.visible ? 'spawned' : 'closed'}`);
+      }
+    });
+  </script>
+
+
 </head>
 
 <body>
@@ -31,13 +92,18 @@
     <!-- <a-plane rotation="-90 0 0" width="50" height="50" color="#777"></a-plane> -->
 
 
-
-    <a-entity id="rig" movement-controls="controls: gamepad, keyboard; fly: true; speed: 2">
+    <!-- controls movement -->
+    <!-- rig with movement + toggle component -->
+    <a-entity id="rig" movement-controls="controls: gamepad, keyboard; fly: true; speed: 2" menu-toggle>
       <a-entity camera look-controls position="0 1.6 0"></a-entity>
+      <a-entity id="leftHand" meta-touch-controls="hand: left"></a-entity>
+      <a-entity id="rightHand" meta-touch-controls="hand: right"></a-entity>
+    </a-entity>
 
-      <!-- Optional visual controller models -->
-      <a-entity meta-touch-controls="hand: left"></a-entity>
-      <a-entity meta-touch-controls="hand: right"></a-entity>
+
+    <!-- menu panel (starts hidden) -->
+    <a-entity id="menuPanel" visible="false" geometry="primitive: plane; width: 1.5; height: 1"
+      material="color: #888; opacity: 0.9" position="0 1.6 -2">
     </a-entity>
 
   </a-scene>
