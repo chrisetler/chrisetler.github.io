@@ -1,111 +1,275 @@
 <html>
 
 <head>
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <script src="https://unpkg.com/aframe-extras/dist/aframe-extras.min.js"></script>
-
-
+  <meta charset="utf-8" />
+  <title>A-Frame Pano Sliders</title>
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/aframe-extras/dist/aframe-extras.min.js"></script>
 
   <script>
+    // ---------- Config: your input image pixel dimensions ----------
+    const PANO_IMG_W = 16553; // pixels
+    const PANO_IMG_H = 4092;  // pixels
+    const degToRad = d => d * Math.PI / 180;
+
+    // ---------- Simple slider (click/laser to set) ----------
+
+    AFRAME.registerComponent('ui-slider', {
+      schema: {
+        min: { type: 'number', default: 0 },
+        max: { type: 'number', default: 1 },
+        value: { type: 'number', default: 0.5 },
+        width: { type: 'number', default: 1.6 },   // wider default
+        height: { type: 'number', default: 0.12 },   // taller default
+        on: { type: 'string', default: 'change' },
+        decimals: { type: 'int', default: 2 },
+        step: { type: 'number', default: 0.05 },    // scroll step
+        hitpad: { type: 'number', default: 0.18 }   // extra clickable padding (meters)
+      },
+      init() {
+        const s = this.data, el = this.el;
+
+        // Big invisible hitbox to make clicking easy
+        const hit = document.createElement('a-plane');
+        hit.setAttribute('width', s.width + 2 * s.hitpad);
+        hit.setAttribute('height', s.height + 2 * s.hitpad);
+        hit.setAttribute('position', '0 0 0.0001');
+        hit.setAttribute('material', 'color: #fff; opacity: 0.001; transparent: true'); // must be visible (opacity>0) to receive raycasts
+        hit.classList.add('ui-hitbox');
+        el.appendChild(hit);
+        this.hit = hit;
+
+        // Visual bar
+        const bar = document.createElement('a-plane');
+        bar.setAttribute('width', s.width);
+        bar.setAttribute('height', s.height);
+        bar.setAttribute('color', '#666');
+        bar.classList.add('ui-interactive');
+        el.appendChild(bar);
+        this.bar = bar;
+
+        // Track
+        const track = document.createElement('a-plane');
+        track.setAttribute('width', s.width);
+        track.setAttribute('height', s.height * 0.4);
+        track.setAttribute('color', '#999');
+        track.setAttribute('position', '0 0 0.001');
+        el.appendChild(track);
+
+        // Thumb
+        const thumb = document.createElement('a-circle');
+        thumb.setAttribute('radius', s.height * 0.65);
+        thumb.setAttribute('color', '#ddd');
+        thumb.setAttribute('position', '0 0 0.002');
+        thumb.classList.add('ui-interactive');
+        el.appendChild(thumb);
+        this.thumb = thumb;
+
+        // Value label
+        const label = document.createElement('a-text');
+        label.setAttribute('align', 'left');
+        label.setAttribute('color', '#fff');
+        label.setAttribute('value', this._fmt(s.value));
+        label.setAttribute('position', `${s.width / 2 + 0.12} 0 0.003`);
+        label.setAttribute('width', '2');
+        el.appendChild(label);
+        this.label = label;
+
+        // Hover tracking for mouse wheel
+        this._hover = false;
+        const setHoverTrue = () => this._hover = true;
+        const setHoverFalse = () => this._hover = false;
+        hit.addEventListener('mouseenter', setHoverTrue);
+        hit.addEventListener('mouseleave', setHoverFalse);
+        bar.addEventListener('mouseenter', setHoverTrue);
+        bar.addEventListener('mouseleave', setHoverFalse);
+        thumb.addEventListener('mouseenter', setHoverTrue);
+        thumb.addEventListener('mouseleave', setHoverFalse);
+
+        // Mouse wheel adjust while hovering (desktop)
+        this._onWheel = (e) => {
+          if (!this._hover) return;
+          e.preventDefault();
+          const dir = (e.deltaY > 0) ? -1 : 1;
+          this._setValue(this.data.value + dir * this.data.step);
+        };
+        window.addEventListener('wheel', this._onWheel, { passive: false });
+
+        // Click/laser to set
+        const updateFromPoint = (ptWorld) => {
+          const local = new THREE.Vector3().copy(ptWorld);
+          this.bar.object3D.worldToLocal(local);
+          const half = s.width / 2;
+          const clampedX = Math.max(-half, Math.min(half, local.x));
+          const t = (clampedX + half) / s.width; // 0..1
+          const val = s.min + t * (s.max - s.min);
+          this._setValue(val);
+        };
+        const onClick = (e) => {
+          if (!e.detail || !e.detail.intersection) return;
+          updateFromPoint(e.detail.intersection.point);
+        };
+        hit.addEventListener('click', onClick);   // big target
+        bar.addEventListener('click', onClick);
+        thumb.addEventListener('click', onClick);
+
+        // Initial
+        this._applyThumbFromValue();
+      },
+      remove() {
+        window.removeEventListener('wheel', this._onWheel);
+      },
+      _fmt(v) { return v.toFixed(Math.max(0, this.data.decimals | 0)); },
+      _applyThumbFromValue() {
+        const { min, max, value, width } = this.data;
+        const t = (value - min) / (max - min);
+        const x = -width / 2 + t * width;
+        this.thumb.setAttribute('position', `${x} 0 0.002`);
+        this.label.setAttribute('value', this._fmt(value));
+      },
+      _setValue(v) {
+        const s = this.data;
+        const clamped = Math.max(s.min, Math.min(s.max, v));
+        this.data.value = clamped;
+        this._applyThumbFromValue();
+        this.el.emit(s.on, { value: clamped });
+      },
+      setValue(v) { this._setValue(v); }
+    });
+
+
+    // ---------- Menu toggle: spawn panel at current view ----------
     AFRAME.registerComponent('menu-toggle', {
       init() {
         this.panel = document.querySelector('#menuPanel');
         this.camera = document.querySelector('[camera]');
         this.visible = false;
-        this.toggle = this.toggle.bind(this);
 
-        // Keyboard: Space
         this.onKey = (e) => { if (e.code === 'Space') this.toggle(); };
         window.addEventListener('keydown', this.onKey);
 
-        // Controller: A button
         const right = document.querySelector('#rightHand');
-        if (right) right.addEventListener('abuttondown', this.toggle);
+        if (right) right.addEventListener('abuttondown', () => this.toggle());
       },
-      remove() {
-        window.removeEventListener('keydown', this.onKey);
-        const right = document.querySelector('#rightHand');
-        if (right) right.removeEventListener('abuttondown', this.toggle);
-      },
+      remove() { window.removeEventListener('keydown', this.onKey); },
       toggle() {
         this.visible = !this.visible;
-
         if (this.visible) {
-          // Find camera world position and facing direction
-          const camObj = this.camera.object3D;
-          const worldPos = new THREE.Vector3();
-          const worldDir = new THREE.Vector3();
-          camObj.getWorldPosition(worldPos);
-          camObj.getWorldDirection(worldDir);
+          const cam = this.camera.object3D;
+          const pos = new THREE.Vector3();
+          const dir = new THREE.Vector3();
+          cam.getWorldPosition(pos);
+          cam.getWorldDirection(dir);
+          const spawn = pos.add(dir.multiplyScalar(-2)); // 2m in front (A-Frame forward=-Z)
+          this.panel.setAttribute('position', `${spawn.x} ${spawn.y} ${spawn.z}`);
 
-          // Offset 2 meters in front of camera
-          const spawnPos = worldPos.add(worldDir.multiplyScalar(-1));
-          this.panel.setAttribute('position', spawnPos);
-
-          // Face the panel toward the camera
-          const rotation = new THREE.Euler().setFromQuaternion(
-            new THREE.Quaternion().setFromRotationMatrix(
-              new THREE.Matrix4().lookAt(spawnPos, worldPos, new THREE.Vector3(0, 1, 0))
-            )
-          );
+          // face the panel toward camera
+          const look = new THREE.Matrix4().lookAt(spawn, pos, new THREE.Vector3(0, 1, 0));
+          const quat = new THREE.Quaternion().setFromRotationMatrix(look);
+          const eul = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
           this.panel.setAttribute('rotation', {
-            x: THREE.MathUtils.radToDeg(rotation.x),
-            y: THREE.MathUtils.radToDeg(rotation.y),
-            z: THREE.MathUtils.radToDeg(rotation.z)
+            x: THREE.MathUtils.radToDeg(eul.x),
+            y: THREE.MathUtils.radToDeg(eul.y),
+            z: THREE.MathUtils.radToDeg(eul.z)
           });
         }
-
         this.panel.setAttribute('visible', this.visible);
-        console.log(`Menu ${this.visible ? 'spawned' : 'closed'}`);
+      }
+    });
+
+    // ---------- Pano controller (waits for sliders) ----------
+    AFRAME.registerComponent('pano-controller', {
+      init() {
+        this.pano = document.querySelector('#pano');
+        this.heightSlider = document.querySelector('#heightSlider');
+        this.thetaSlider = document.querySelector('#thetaSlider');
+
+        const ready = (el, comp) => new Promise(res => {
+          if (el && el.components && el.components[comp]) return res(el.components[comp]);
+          const onInit = (e) => { if (e.detail.name === comp) { el.removeEventListener('componentinitialized', onInit); res(el.components[comp]); } };
+          el.addEventListener('componentinitialized', onInit);
+        });
+        const nodeLoaded = (el) => new Promise(res => el.hasLoaded ? res() : el.addEventListener('loaded', res));
+
+        Promise.all([
+          nodeLoaded(this.pano),
+          ready(this.heightSlider, 'ui-slider'),
+          ready(this.thetaSlider, 'ui-slider')
+        ]).then(([_, hComp, tComp]) => {
+          const initHeight = 3.0;   // meters
+          const initTheta = 180.0; // degrees
+          hComp.setValue(initHeight);
+          tComp.setValue(initTheta);
+          this._apply(initHeight, initTheta);
+
+          this.heightSlider.addEventListener('height', (e) => {
+            const h = e.detail.value;
+            const t = this.thetaSlider.components['ui-slider'].data.value;
+            this._apply(h, t);
+          });
+          this.thetaSlider.addEventListener('theta', (e) => {
+            const t = e.detail.value;
+            const h = this.heightSlider.components['ui-slider'].data.value;
+            this._apply(h, t);
+          });
+        });
+      },
+      _apply(heightM, thetaDeg) {
+        const aspectWH = PANO_IMG_W / PANO_IMG_H;
+        const thetaRad = degToRad(thetaDeg);
+        const radius = (heightM * aspectWH) / (thetaRad || 1e-5); // your arc-length formula
+
+        this.pano.setAttribute('height', heightM);
+        this.pano.setAttribute('theta-length', thetaDeg);
+        this.pano.setAttribute('radius', radius);
+        this.pano.setAttribute('open-ended', true);
+        this.pano.setAttribute('side', 'back');
       }
     });
   </script>
-
-
 </head>
 
 <body>
   <a-scene>
-    <!-- image at x=0 y=1.6 z=-3, scale=2x -->
-    <a-image src=".\photos\IMG_20251024_0001_04.jpg" position="0 1.7 -3" width="0.6" height="0.87"></a-image>
+    <!-- RIG (movement-controls needs a child camera) -->
+    <a-entity id="rig" movement-controls="camera: #head; controls: gamepad, keyboard; fly: true; speed: 2" menu-toggle
+      pano-controller>
 
+      <!-- The ONLY camera -->
+      <a-entity id="head" camera look-controls cursor="rayOrigin: mouse; fuse: false"
+        raycaster="objects: .ui-interactive, .ui-hitbox" position="0 1.6 0"></a-entity>
 
-    <!-- panno 1
-    <a-image src=".\photos\IMG_0466-Pano.jpg" position="0 0 -500" width="4464" height="1082"></a-image> -->
-
-
-
-
-    <a-cylinder position="0 0 0" rotation="0 90 0" radius="1420" height="1082" theta-length="180" scale="0.5 0.5 0.5"
-      open-ended="true" side="double" src="photos/IMG_0466-Pano.jpg" material="" geometry=""></a-cylinder>
-
-    <!-- panno 2
-    <a-image src=".\photos\IMG_0549-Pano.jpg" position="0 0 500" width="5379" height="1082"></a-image> -->
-
-    <!-- another image 5m to the right and 6m away
-      <a-image src="poster.png" position="5 1.8 -6" width="1.2" height="2"></a-image> -->
-
-    <!-- ground + basic movement -->
-    <!-- <a-plane rotation="-90 0 0" width="50" height="50" color="#777"></a-plane> -->
-
-
-    <!-- controls movement -->
-    <!-- rig with movement + toggle component -->
-    <a-entity id="rig" movement-controls="controls: gamepad, keyboard; fly: true; speed: 2" menu-toggle>
-      <a-entity camera look-controls position="0 1.6 0"></a-entity>
-      <a-entity id="leftHand" meta-touch-controls="hand: left"></a-entity>
-      <a-entity id="rightHand" meta-touch-controls="hand: right"></a-entity>
+      <!-- Hands / lasers (for VR UI) -->
+      <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .ui-interactive"></a-entity>
+      <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .ui-interactive"></a-entity>
     </a-entity>
 
+    <!-- Example still image -->
+    <a-image src="photos/IMG_20251024_0001_04.jpg" position="0 1.7 -3" width="0.6" height="0.87"></a-image>
 
-    <!-- menu panel (starts hidden) -->
-    <a-entity id="menuPanel" visible="false" geometry="primitive: plane; width: 1.5; height: 1"
-      material="color: #888; opacity: 0.9" position="0 1.6 -2">
+    <!-- Cylindrical panorama WITH ID -->
+    <a-cylinder id="pano" position="0 0 0" rotation="0 90 0" radius="5" height="3" theta-length="180" open-ended="true"
+      side="back" src="photos/IMG_0466-Pano.jpg">
+    </a-cylinder>
+
+    <!-- MENU PANEL (toggled with Space/A) -->
+    <a-entity id="menuPanel" visible="false" geometry="primitive: plane; width: 1.8; height: 1.1"
+      material="color: #666; opacity: 0.95">
+      <a-text value="Panorama Settings" color="#fff" align="center" position="0 0.45 0.01" width="2.2"></a-text>
+
+      <a-text value="Height (m)" color="#fff" align="left" position="-0.85 0.25 0.01" width="1.5"></a-text>
+      <a-entity id="heightSlider"
+        ui-slider="min: 1; max: 1000; value: 3; width: 1.2; height: 0.08; on: height; decimals: 2"
+        position="0 0.15 0.01"></a-entity>
+
+      <a-text value="Theta (deg)" color="#fff" align="left" position="-0.85 -0.05 0.01" width="1.5"></a-text>
+      <a-entity id="thetaSlider"
+        ui-slider="min: 30; max: 340; value: 180; width: 1.2; height: 0.08; on: theta; decimals: 0"
+        position="0 -0.15 0.01"></a-entity>
+
+      <a-text value="Space / A: Toggle menu • Point+Click to set" color="#ddd" align="center" width="1.8"
+        position="0 -0.45 0.01"></a-text>
     </a-entity>
-
   </a-scene>
 </body>
 
