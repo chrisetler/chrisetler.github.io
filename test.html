@@ -8,146 +8,126 @@
 
   <script>
     // ---------- Config: your input image pixel dimensions ----------
-    const PANO_IMG_W = 16553; // pixels
-    const PANO_IMG_H = 4092;  // pixels
-    const degToRad = d => d * Math.PI / 180;
+    const PANO_IMG_W = 16553; // px
+    const PANO_IMG_H = 4092;  // px
+
+
+
+
+    function cartesianToPolarRelativeToCamera(worldPos, cameraEl = document.querySelector('#head')) {
+      const camPos = new THREE.Vector3();
+      cameraEl.object3D.getWorldPosition(camPos);
+
+      const dx = worldPos.x - camPos.x;
+      const dz = worldPos.z - camPos.z;
+      const dy = worldPos.y - camPos.y;
+
+      const r = Math.hypot(dx, dz);
+      const thetaDeg = Math.atan2(dx, dz) * 180 / Math.PI;
+      const yOffset = dy;
+
+      return { r, thetaDeg, yOffset };
+    }
+
+
 
     // ---------- Simple slider (click/laser to set) ----------
-
     AFRAME.registerComponent('ui-slider', {
       schema: {
-        min: { type: 'number', default: 0 },
-        max: { type: 'number', default: 1 },
-        value: { type: 'number', default: 0.5 },
-        width: { type: 'number', default: 1.6 },   // wider default
-        height: { type: 'number', default: 0.12 },   // taller default
-        on: { type: 'string', default: 'change' },
-        decimals: { type: 'int', default: 2 },
-        step: { type: 'number', default: 0.05 },    // scroll step
-        hitpad: { type: 'number', default: 0.18 }   // extra clickable padding (meters)
+        min: { type: 'number', default: 0 }, max: { type: 'number', default: 1 }, value: { type: 'number', default: 0.5 },
+        width: { type: 'number', default: 1.6 }, height: { type: 'number', default: 0.12 },
+        on: { type: 'string', default: 'change' }, decimals: { type: 'int', default: 2 },
+        step: { type: 'number', default: 0.05 }, hitpad: { type: 'number', default: 0.18 }
       },
       init() {
         const s = this.data, el = this.el;
-
-        // Big invisible hitbox to make clicking easy
         const hit = document.createElement('a-plane');
         hit.setAttribute('width', s.width + 2 * s.hitpad);
         hit.setAttribute('height', s.height + 2 * s.hitpad);
         hit.setAttribute('position', '0 0 0.0001');
-        hit.setAttribute('material', 'color: #fff; opacity: 0.001; transparent: true'); // must be visible (opacity>0) to receive raycasts
-        hit.classList.add('ui-hitbox');
-        el.appendChild(hit);
-        this.hit = hit;
+        hit.setAttribute('material', 'color:#fff; opacity:0.001; transparent:true');
+        hit.classList.add('ui-hitbox'); el.appendChild(hit); this.hit = hit;
 
-        // Visual bar
         const bar = document.createElement('a-plane');
-        bar.setAttribute('width', s.width);
-        bar.setAttribute('height', s.height);
-        bar.setAttribute('color', '#666');
-        bar.classList.add('ui-interactive');
-        el.appendChild(bar);
-        this.bar = bar;
+        bar.setAttribute('width', s.width); bar.setAttribute('height', s.height);
+        bar.setAttribute('color', '#666'); bar.classList.add('ui-interactive');
+        el.appendChild(bar); this.bar = bar;
 
-        // Track
         const track = document.createElement('a-plane');
-        track.setAttribute('width', s.width);
-        track.setAttribute('height', s.height * 0.4);
-        track.setAttribute('color', '#999');
-        track.setAttribute('position', '0 0 0.001');
+        track.setAttribute('width', s.width); track.setAttribute('height', s.height * 0.4);
+        track.setAttribute('color', '#999'); track.setAttribute('position', '0 0 0.001');
         el.appendChild(track);
 
-        // Thumb
         const thumb = document.createElement('a-circle');
-        thumb.setAttribute('radius', s.height * 0.65);
-        thumb.setAttribute('color', '#ddd');
-        thumb.setAttribute('position', '0 0 0.002');
-        thumb.classList.add('ui-interactive');
-        el.appendChild(thumb);
-        this.thumb = thumb;
+        thumb.setAttribute('radius', s.height * 0.65); thumb.setAttribute('color', '#ddd');
+        thumb.setAttribute('position', '0 0 0.002'); thumb.classList.add('ui-interactive');
+        el.appendChild(thumb); this.thumb = thumb;
 
-        // Value label
         const label = document.createElement('a-text');
-        label.setAttribute('align', 'left');
-        label.setAttribute('color', '#fff');
+        label.setAttribute('align', 'left'); label.setAttribute('color', '#fff');
         label.setAttribute('value', this._fmt(s.value));
-        label.setAttribute('position', `${s.width / 2 + 0.12} 0 0.003`);
-        label.setAttribute('width', '2');
-        el.appendChild(label);
-        this.label = label;
+        label.setAttribute('position', `${s.width / 2 + 0.12} 0 0.003`); label.setAttribute('width', '2');
+        el.appendChild(label); this.label = label;
 
-        // Hover tracking for mouse wheel
         this._hover = false;
-        const setHoverTrue = () => this._hover = true;
-        const setHoverFalse = () => this._hover = false;
-        hit.addEventListener('mouseenter', setHoverTrue);
-        hit.addEventListener('mouseleave', setHoverFalse);
-        bar.addEventListener('mouseenter', setHoverTrue);
-        bar.addEventListener('mouseleave', setHoverFalse);
-        thumb.addEventListener('mouseenter', setHoverTrue);
-        thumb.addEventListener('mouseleave', setHoverFalse);
+        const on = () => this._hover = true, off = () => this._hover = false;
+        [hit, bar, thumb].forEach(n => { n.addEventListener('mouseenter', on); n.addEventListener('mouseleave', off); });
 
-        // Mouse wheel adjust while hovering (desktop)
         this._onWheel = (e) => {
-          if (!this._hover) return;
-          e.preventDefault();
-          const dir = (e.deltaY > 0) ? -1 : 1;
-          this._setValue(this.data.value + dir * this.data.step);
+          if (!this._hover) return; e.preventDefault();
+          const dir = (e.deltaY > 0) ? -1 : 1; this._setValue(this.data.value + dir * this.data.step);
         };
         window.addEventListener('wheel', this._onWheel, { passive: false });
 
-        // Click/laser to set
         const updateFromPoint = (ptWorld) => {
-          const local = new THREE.Vector3().copy(ptWorld);
-          this.bar.object3D.worldToLocal(local);
-          const half = s.width / 2;
-          const clampedX = Math.max(-half, Math.min(half, local.x));
-          const t = (clampedX + half) / s.width; // 0..1
-          const val = s.min + t * (s.max - s.min);
-          this._setValue(val);
+          const local = new THREE.Vector3().copy(ptWorld); this.bar.object3D.worldToLocal(local);
+          const half = s.width / 2; const clampedX = Math.max(-half, Math.min(half, local.x));
+          const t = (clampedX + half) / s.width; const val = s.min + t * (s.max - s.min); this._setValue(val);
         };
-        const onClick = (e) => {
-          if (!e.detail || !e.detail.intersection) return;
-          updateFromPoint(e.detail.intersection.point);
-        };
-        hit.addEventListener('click', onClick);   // big target
-        bar.addEventListener('click', onClick);
-        thumb.addEventListener('click', onClick);
+        const onClick = (e) => { if (!e.detail || !e.detail.intersection) return; updateFromPoint(e.detail.intersection.point); };
+        hit.addEventListener('click', onClick); bar.addEventListener('click', onClick); thumb.addEventListener('click', onClick);
 
-        // Initial
         this._applyThumbFromValue();
       },
-      remove() {
-        window.removeEventListener('wheel', this._onWheel);
-      },
+      remove() { window.removeEventListener('wheel', this._onWheel); },
       _fmt(v) { return v.toFixed(Math.max(0, this.data.decimals | 0)); },
       _applyThumbFromValue() {
-        const { min, max, value, width } = this.data;
-        const t = (value - min) / (max - min);
-        const x = -width / 2 + t * width;
-        this.thumb.setAttribute('position', `${x} 0 0.002`);
+        const { min, max, value, width } = this.data; const t = (value - min) / (max - min);
+        const x = -width / 2 + t * width; this.thumb.setAttribute('position', `${x} 0 0.002`);
         this.label.setAttribute('value', this._fmt(value));
       },
-      _setValue(v) {
-        const s = this.data;
-        const clamped = Math.max(s.min, Math.min(s.max, v));
-        this.data.value = clamped;
-        this._applyThumbFromValue();
-        this.el.emit(s.on, { value: clamped });
-      },
+      _setValue(v) { const s = this.data; const c = Math.max(s.min, Math.min(s.max, v)); this.data.value = c; this._applyThumbFromValue(); this.el.emit(s.on, { value: c }); },
       setValue(v) { this._setValue(v); }
     });
 
+    // ---------- Simple button ----------
+    AFRAME.registerComponent('ui-button', {
+      schema: { label: { type: 'string', default: 'Button' }, width: { type: 'number', default: 0.9 }, height: { type: 'number', default: 0.2 } },
+      init() {
+        const s = this.data, el = this.el;
+        const hit = document.createElement('a-plane');
+        hit.setAttribute('width', s.width); hit.setAttribute('height', s.height);
+        hit.setAttribute('material', 'color:#888; opacity:0.95');
+        hit.classList.add('ui-interactive', 'ui-hitbox'); el.appendChild(hit); this._hit = hit;
+        const txt = document.createElement('a-text');
+        txt.setAttribute('value', s.label); txt.setAttribute('align', 'center'); txt.setAttribute('color', '#fff');
+        txt.setAttribute('width', s.width * 1.6); txt.setAttribute('position', '0 0 0.01'); el.appendChild(txt); this._txt = txt;
+        hit.addEventListener('click', () => el.emit('clicked'));
+      },
+      update() {
+        if (this._txt) this._txt.setAttribute('value', this.data.label);
+        if (this._hit) { this._hit.setAttribute('width', this.data.width); this._hit.setAttribute('height', this.data.height); }
+      }
+    });
 
-    // ---------- Menu toggle: spawn panel at current view ----------
+    // ---------- Menu toggle: spawn in front & face user ----------
     AFRAME.registerComponent('menu-toggle', {
       init() {
         this.panel = document.querySelector('#menuPanel');
         this.camera = document.querySelector('[camera]');
         this.visible = false;
-
         this.onKey = (e) => { if (e.code === 'Space') this.toggle(); };
         window.addEventListener('keydown', this.onKey);
-
         const right = document.querySelector('#rightHand');
         if (right) right.addEventListener('abuttondown', () => this.toggle());
       },
@@ -155,97 +135,279 @@
       toggle() {
         this.visible = !this.visible;
         if (this.visible) {
-          const cam = this.camera.object3D;
-          const pos = new THREE.Vector3();
-          const dir = new THREE.Vector3();
-          cam.getWorldPosition(pos);
-          cam.getWorldDirection(dir);
-          const spawn = pos.add(dir.multiplyScalar(-2)); // 2m in front (A-Frame forward=-Z)
+          const cam = this.camera.object3D; const pos = new THREE.Vector3(); const dir = new THREE.Vector3();
+          cam.getWorldPosition(pos); cam.getWorldDirection(dir);
+          const spawn = pos.clone().add(dir.multiplyScalar(-2));
           this.panel.setAttribute('position', `${spawn.x} ${spawn.y} ${spawn.z}`);
-
-          // face the panel toward camera
-          const look = new THREE.Matrix4().lookAt(spawn, pos, new THREE.Vector3(0, 1, 0));
-          const quat = new THREE.Quaternion().setFromRotationMatrix(look);
-          const eul = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
-          this.panel.setAttribute('rotation', {
-            x: THREE.MathUtils.radToDeg(eul.x),
-            y: THREE.MathUtils.radToDeg(eul.y),
-            z: THREE.MathUtils.radToDeg(eul.z)
+          this.panel.setAttribute('visible', true);
+          requestAnimationFrame(() => {
+            const panelPos = new THREE.Vector3(); const camPos = new THREE.Vector3();
+            this.panel.object3D.getWorldPosition(panelPos); cam.getWorldPosition(camPos);
+            const dx = camPos.x - panelPos.x, dz = camPos.z - panelPos.z;
+            const yawDeg = Math.atan2(dx, dz) * 180 / Math.PI; const pitchDeg = -15;
+            this.panel.setAttribute('rotation', `${pitchDeg} ${yawDeg} 0`);
           });
-        }
-        this.panel.setAttribute('visible', this.visible);
+        } else { this.panel.setAttribute('visible', false); }
       }
     });
 
-    // ---------- Pano controller (waits for sliders) ----------
+    // ---------- Locomotion manager (gamepad only so WASD is free) ----------
+    AFRAME.registerComponent('locomotion-manager', {
+      schema: { mode: { default: 'fly' } },
+      init() { this.head = document.querySelector('#head'); this.mc = this.el.components['movement-controls']; this.setMode(this.data.mode); },
+      setMode(mode) {
+        if (mode === 'fly' && this.mc) {
+          this.mc.pause();
+          this.el.setAttribute('movement-controls', 'camera: #head; controls: gamepad; fly: true; speed: 2'); this.mc.play();
+        }
+        this.data.mode = mode; this.el.emit('locomotionmodechanged', { mode });
+      },
+      resetView() {
+        this.el.setAttribute('position', '0 0 0'); this.el.setAttribute('rotation', '0 0 0');
+        const head = this.head; if (head) {
+          head.setAttribute('rotation', '0 0 0');
+          const lc = head.components['look-controls']; if (lc && lc.yawObject && lc.pitchObject) { lc.yawObject.rotation.y = 0; lc.pitchObject.rotation.x = 0; }
+        }
+      }
+    });
+
+    // ---------- Wire menu buttons ----------
+    AFRAME.registerComponent('menu-actions', {
+      schema: { rig: { type: 'selector', default: '#rig' }, modeLabel: { type: 'selector', default: '#modeLabel' } },
+      init() {
+        const rig = this.data.rig, modeLabel = this.data.modeLabel;
+        const resetBtn = this.el.querySelector('#btnReset'), modeBtn = this.el.querySelector('#btnMode');
+        resetBtn.addEventListener('clicked', () => { rig.components['locomotion-manager'].resetView(); });
+        modeBtn.addEventListener('clicked', () => { const lm = rig.components['locomotion-manager']; lm.setMode('fly'); if (modeLabel) modeLabel.setAttribute('value', 'Mode: Fly'); });
+        if (modeLabel) modeLabel.setAttribute('value', 'Mode: Fly');
+      }
+    });
+
+    // ---------- Pano controller (distance + theta -> height) ----------
     AFRAME.registerComponent('pano-controller', {
       init() {
         this.pano = document.querySelector('#pano');
-        this.heightSlider = document.querySelector('#heightSlider');
+        this.distanceSlider = document.querySelector('#distanceSlider');
         this.thetaSlider = document.querySelector('#thetaSlider');
-
+        this.heightReadout = document.querySelector('#heightReadout');
         const ready = (el, comp) => new Promise(res => {
           if (el && el.components && el.components[comp]) return res(el.components[comp]);
           const onInit = (e) => { if (e.detail.name === comp) { el.removeEventListener('componentinitialized', onInit); res(el.components[comp]); } };
           el.addEventListener('componentinitialized', onInit);
         });
         const nodeLoaded = (el) => new Promise(res => el.hasLoaded ? res() : el.addEventListener('loaded', res));
-
         Promise.all([
           nodeLoaded(this.pano),
-          ready(this.heightSlider, 'ui-slider'),
+          ready(this.distanceSlider, 'ui-slider'),
           ready(this.thetaSlider, 'ui-slider')
-        ]).then(([_, hComp, tComp]) => {
-          const initHeight = 3.0;   // meters
-          const initTheta = 180.0; // degrees
-          hComp.setValue(initHeight);
-          tComp.setValue(initTheta);
-          this._apply(initHeight, initTheta);
-
-          this.heightSlider.addEventListener('height', (e) => {
-            const h = e.detail.value;
-            const t = this.thetaSlider.components['ui-slider'].data.value;
-            this._apply(h, t);
-          });
-          this.thetaSlider.addEventListener('theta', (e) => {
-            const t = e.detail.value;
-            const h = this.heightSlider.components['ui-slider'].data.value;
-            this._apply(h, t);
-          });
+        ]).then(([_, dComp, tComp]) => {
+          const initDistance = 5.0, initTheta = 180.0;
+          dComp.setValue(initDistance); tComp.setValue(initTheta); this._apply(initDistance, initTheta);
+          this.distanceSlider.addEventListener('distance', (e) => { const r = e.detail.value; const t = this.thetaSlider.components['ui-slider'].data.value; this._apply(r, t); });
+          this.thetaSlider.addEventListener('theta', (e) => { const t = e.detail.value; const r = this.distanceSlider.components['ui-slider'].data.value; this._apply(r, t); });
         });
       },
-      _apply(heightM, thetaDeg) {
-        const aspectWH = PANO_IMG_W / PANO_IMG_H;
-        const thetaRad = degToRad(thetaDeg);
-        const radius = (heightM * aspectWH) / (thetaRad || 1e-5); // your arc-length formula
-
-        this.pano.setAttribute('height', heightM);
+      _apply(radiusM, thetaDeg) {
+        const thetaRad = thetaDeg * Math.PI / 180;
+        const heightM = (PANO_IMG_H / PANO_IMG_W) * thetaRad * radiusM;
+        this.pano.setAttribute('radius', radiusM);
         this.pano.setAttribute('theta-length', thetaDeg);
-        this.pano.setAttribute('radius', radius);
+        this.pano.setAttribute('height', heightM);
         this.pano.setAttribute('open-ended', true);
         this.pano.setAttribute('side', 'back');
+        if (this.heightReadout) { this.heightReadout.setAttribute('value', `Computed height: ${heightM.toFixed(3)} m`); }
       }
     });
+
+    // ---------- Polar placement (WASD + Q/E) + auto-yaw rig toward pano ----------
+   AFRAME.registerComponent('polar-placement', {
+  schema: {
+    target: { type:'selector', default:'#pano' },
+    r: { type:'number', default: 0 },
+    thetaDeg: { type:'number', default: 0 },
+    yOffset: { type:'number', default: 0 },
+
+    // Keyboard step sizes (per key press)
+    rStep: { type:'number', default: 0.2 },
+    thetaStep: { type:'number', default: 5 },
+    yStep: { type:'number', default: 0.1 },
+
+    // VR analog speeds (units/sec)
+    rSpeed: { type:'number', default: 1.5 },       // meters per second per full tilt
+    thetaSpeed: { type:'number', default: 60 },    // deg/sec per full tilt
+    ySpeed: { type:'number', default: 1.0 },       // meters/sec per full tilt
+    deadzone: { type:'number', default: 0.15 },
+
+    showHUD: { type:'boolean', default:true },
+    hudId:   { type:'string',  default:'polarHUD' },
+    faceRig: { type:'boolean', default:true }
+  },
+
+  init(){
+    this.rig   = document.querySelector('#rig');
+    this.head  = document.querySelector('#head');
+    this.left  = document.querySelector('#leftHand');
+    this.right = document.querySelector('#rightHand');
+
+    // axes state
+    this.axesL = {x:0, y:0};
+    this.axesR = {x:0, y:0};
+    this.bHeld = false;
+
+    // ----- Keyboard (still supported) -----
+    this.onKey = (e)=>{
+      const d=this.data; let used=false;
+      switch(e.code){
+        case 'KeyW': d.r = Math.max(0, d.r + d.rStep); used=true; break;
+        case 'KeyS': d.r = Math.max(0, d.r - d.rStep); used=true; break;
+        case 'KeyD': d.thetaDeg += d.thetaStep; used=true; break;
+        case 'KeyA': d.thetaDeg -= d.thetaStep; used=true; break;
+        case 'KeyE': d.yOffset += d.yStep; used=true; break;
+        case 'KeyQ': d.yOffset -= d.yStep; used=true; break;
+      }
+      if (used){ e.preventDefault(); e.stopPropagation(); this.apply(); }
+    };
+    window.addEventListener('keydown', this.onKey);
+
+    // ----- VR: thumbsticks -----
+    // Right stick: y -> r, x -> theta
+    if (this.right){
+      this.onRightStick = (e)=>{
+        if (!e.detail) return;
+        this.axesR.x = e.detail.x || 0;
+        this.axesR.y = e.detail.y || 0;
+      };
+      this.onBdown = ()=>{ this.bHeld = true; };
+      this.onBup   = ()=>{ this.bHeld = false; };
+      this.right.addEventListener('thumbstickmoved', this.onRightStick);
+      this.right.addEventListener('bbuttondown', this.onBdown);
+      this.right.addEventListener('bbuttonup',   this.onBup);
+    }
+
+    // Left stick: y -> yOffset
+    if (this.left){
+      this.onLeftStick = (e)=>{
+        if (!e.detail) return;
+        this.axesL.x = e.detail.x || 0;
+        this.axesL.y = e.detail.y || 0;
+      };
+      this.left.addEventListener('thumbstickmoved', this.onLeftStick);
+    }
+
+    // First placement
+    this.apply();
+    this._lastT = performance.now();
+  },
+
+  remove(){
+    window.removeEventListener('keydown', this.onKey);
+    if (this.right){
+      this.right.removeEventListener('thumbstickmoved', this.onRightStick);
+      this.right.removeEventListener('bbuttondown', this.onBdown);
+      this.right.removeEventListener('bbuttonup',   this.onBup);
+    }
+    if (this.left){
+      this.left.removeEventListener('thumbstickmoved', this.onLeftStick);
+    }
+  },
+
+  tick(){
+    // dt in seconds
+    const now = performance.now();
+    const dt  = (now - this._lastT) / 1000;
+    this._lastT = now;
+
+    const d = this.data;
+    const dz = this.data.deadzone;
+
+    // Helper: deadzone clamp
+    const dzf = (v)=> Math.abs(v) < dz ? 0 : v;
+
+    // Right stick: up/down -> r, left/right -> theta
+    const rY = -dzf(this.axesR.y); // up is negative: invert so up increases r
+    const rX =  dzf(this.axesR.x);
+
+    // Left stick: up/down -> yOffset  (or hold B + right up/down does y too)
+    const lY = -dzf(this.axesL.y);
+    const by = this.bHeld ? rY : 0; // extra: hold B to use right stick for Y
+
+    let changed = false;
+
+    if (rY !== 0){
+      d.r = Math.max(0, d.r + rY * d.rSpeed * dt);
+      changed = true;
+    }
+    if (rX !== 0){
+      d.thetaDeg = d.thetaDeg + rX * d.thetaSpeed * dt;
+      changed = true;
+    }
+    const yDelta = (lY * d.ySpeed + by * d.ySpeed) * dt;
+    if (yDelta !== 0){
+      d.yOffset = d.yOffset + yDelta;
+      changed = true;
+    }
+
+    if (changed) this.apply();
+  },
+
+  apply(){
+    const t=this.data.target; if(!t || !this.head) return;
+    const {r, thetaDeg, yOffset} = this.data;
+    const thetaRad = THREE.MathUtils.degToRad(thetaDeg);
+
+    // Place relative to camera position
+    const camPos = new THREE.Vector3();
+    this.head.object3D.getWorldPosition(camPos);
+
+    const x = r * Math.sin(thetaRad);
+    const z = r * Math.cos(thetaRad);
+    const y = yOffset;
+
+    const newPos = new THREE.Vector3(camPos.x + x, camPos.y + y, camPos.z + z);
+    t.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
+
+    // Yaw the rig toward the pano (VR-friendly; doesn't fight head)
+    if (this.data.faceRig && this.rig){
+      const rigPos = new THREE.Vector3(); this.rig.object3D.getWorldPosition(rigPos);
+      const dx = newPos.x - rigPos.x, dz = newPos.z - rigPos.z;
+      const yawDeg = Math.atan2(dx, dz) * 180 / Math.PI;
+      const rot = this.rig.getAttribute('rotation') || {x:0,y:0,z:0};
+      this.rig.setAttribute('rotation', {x:rot.x, y:yawDeg, z:rot.z});
+    }
+
+    // HUD
+    // if (this.data.showHUD){
+    //   const hud = document.getElementById(this.data.hudId);
+    //   if (hud) hud.setAttribute('value',
+    //     `r: ${r.toFixed(2)} m   θ: ${thetaDeg.toFixed(1)}°   y: ${yOffset.toFixed(2)} m`);
+    // }
+  }
+});
   </script>
 </head>
 
 <body>
   <a-scene>
-    <!-- RIG (movement-controls needs a child camera) -->
-    <a-entity id="rig" movement-controls="camera: #head; controls: gamepad, keyboard; fly: true; speed: 2" menu-toggle
-      pano-controller>
+    <!-- RIG (gamepad locomotion only, so WASD is free for polar placement) -->
+    <a-entity id="rig" movement-controls="camera: #head; controls: keyboard; fly: true; speed: 2" locomotion-manager
+      menu-toggle pano-controller
+      polar-placement="target: #pano; hudId: polarHUD; r: 0; thetaDeg: 0; yOffset: 0; faceRig: true">
 
-      <!-- The ONLY camera -->
+      <!-- Camera -->
       <a-entity id="head" camera look-controls cursor="rayOrigin: mouse; fuse: false"
         raycaster="objects: .ui-interactive, .ui-hitbox" position="0 1.6 0"></a-entity>
 
-      <!-- Hands / lasers (for VR UI) -->
-      <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .ui-interactive"></a-entity>
-      <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .ui-interactive"></a-entity>
+      <!-- Hands / lasers -->
+      <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .ui-interactive, .ui-hitbox"></a-entity>
+      <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .ui-interactive, .ui-hitbox"></a-entity>
     </a-entity>
 
+    <!-- Optional HUD for polar controls
+    <a-text id="polarHUD" value="r: 0.00 m   θ: 0.0°   y: 0.00 m" color="#fff" align="center" width="2.6"
+      position="0 1.3 -1.2"></a-text> -->
+
     <!-- Example still image -->
-    <a-image src="photos/IMG_20251024_0001_04.jpg" position="0 1.7 -3" width="0.6" height="0.87"></a-image>
+    <!-- <a-image src="photos/IMG_20251024_0001_04.jpg" position="0 1.7 -3" width="0.6" height="0.87"></a-image> -->
 
     <!-- Cylindrical panorama WITH ID -->
     <a-cylinder id="pano" position="0 0 0" rotation="0 90 0" radius="5" height="3" theta-length="180" open-ended="true"
@@ -253,22 +415,39 @@
     </a-cylinder>
 
     <!-- MENU PANEL (toggled with Space/A) -->
-    <a-entity id="menuPanel" visible="false" geometry="primitive: plane; width: 1.8; height: 1.1"
-      material="color: #666; opacity: 0.95">
-      <a-text value="Panorama Settings" color="#fff" align="center" position="0 0.45 0.01" width="2.2"></a-text>
+    <a-entity id="menuPanel" visible="false" geometry="primitive: plane; width: 1.8; height: 1.2"
+      material="color: #666; opacity: 0.95" menu-actions="rig: #rig; modeLabel: #modeLabel">
 
-      <a-text value="Height (m)" color="#fff" align="left" position="-0.85 0.25 0.01" width="1.5"></a-text>
-      <a-entity id="heightSlider"
-        ui-slider="min: 1; max: 30; value: 3; width: 1.2; height: 0.08; on: height; decimals: 2"
-        position="0 0.15 0.01"></a-entity>
+      <a-text value="Panorama Settings" color="#fff" align="center" position="0 0.50 0.01" width="2.2"></a-text>
 
-      <a-text value="Theta (deg)" color="#fff" align="left" position="-0.85 -0.05 0.01" width="1.5"></a-text>
+      <!-- Distance (radius) slider -->
+      <a-text value="Distance (m)" color="#fff" align="left" position="-0.85 0.32 0.01" width="1.5"></a-text>
+      <a-entity id="distanceSlider"
+        ui-slider="min: 1; max: 50; value: 5; width: 1.8; height: 0.14; on: distance; decimals: 2; step: 0.1; hitpad: 0.25"
+        position="0 0.22 0.01"></a-entity>
+
+      <!-- Theta slider -->
+      <a-text value="Theta (deg)" color="#fff" align="left" position="-0.85 0.02 0.01" width="1.5"></a-text>
       <a-entity id="thetaSlider"
-        ui-slider="min: 30; max: 340; value: 180; width: 1.2; height: 0.08; on: theta; decimals: 0"
-        position="0 -0.15 0.01"></a-entity>
+        ui-slider="min: 30; max: 340; value: 180; width: 1.8; height: 0.14; on: theta; decimals: 0; step: 1; hitpad: 0.25"
+        position="0 -0.08 0.01"></a-entity>
 
-      <a-text value="Space / A: Toggle menu • Point+Click to set" color="#ddd" align="center" width="1.8"
-        position="0 -0.45 0.01"></a-text>
+      <!-- Computed height readout -->
+      <a-text id="heightReadout" value="Computed height: —" color="#ddd" align="center" width="1.8"
+        position="0 -0.26 0.01"></a-text>
+
+      <!-- Mode label -->
+      <a-text id="modeLabel" value="Mode: Fly" color="#fff" align="center" width="2" position="0 -0.02 0.01"></a-text>
+
+      <!-- Buttons row -->
+      <a-entity position="0 -0.38 0.01">
+        <a-entity id="btnReset" ui-button="label: Reset View; width: 0.8; height: 0.2" position="-0.45 0 0"></a-entity>
+        <a-entity id="btnMode" ui-button="label: Locomotion: Fly; width: 0.95; height: 0.2"
+          position="0.55 0 0"></a-entity>
+      </a-entity>
+
+      <a-text value="Space / A: Toggle menu • Click or point to interact" color="#ddd" align="center" width="1.8"
+        position="0 -0.56 0.01"></a-text>
     </a-entity>
   </a-scene>
 </body>
