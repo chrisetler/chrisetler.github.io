@@ -1,10 +1,27 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Hello World</title>
-</head>
-<body>
-  <h1>Hello, World!</h1>
-</body>
+<html>
+  <head>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  </head>
+  <body>
+    <a-scene>
+      <!-- image at x=0 y=1.6 z=-3, scale=2x -->
+      <a-image src=".\photos\IMG_20251024_0001_04.jpg" position="0 1.7 -3" width="0.6" height="0.87"></a-image>
+
+
+      <!-- panno 1-->
+      <a-image src=".\photos\IMG_0466-Pano.jpg" position="0 0 -500" width="4464" height="1082"></a-image>
+
+      <!-- panno 2-->
+      <a-image src=".\photos\IMG_0549-Pano.jpg" position="0 0 500" width="5379" height="1082"></a-image>
+
+      <!-- another image 5m to the right and 6m away
+      <a-image src="poster.png" position="5 1.8 -6" width="1.2" height="2"></a-image> -->
+
+      <!-- ground + basic movement -->
+      <!-- <a-plane rotation="-90 0 0" width="50" height="50" color="#777"></a-plane> -->
+
+
+      <a-entity movement-controls wasd-controls look-controls camera position="0 1.6 0"></a-entity>
+    </a-scene>
+  </body>
 </html>
