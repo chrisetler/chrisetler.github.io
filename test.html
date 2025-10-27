@@ -260,8 +260,8 @@
       switch(e.code){
         case 'KeyW': d.r = Math.max(0, d.r + d.rStep); used=true; break;
         case 'KeyS': d.r = Math.max(0, d.r - d.rStep); used=true; break;
-        case 'KeyD': d.thetaDeg += d.thetaStep; used=true; break;
-        case 'KeyA': d.thetaDeg -= d.thetaStep; used=true; break;
+        case 'KeyD': d.thetaDeg -= d.thetaStep; used=true; break;
+        case 'KeyA': d.thetaDeg += d.thetaStep; used=true; break;
         case 'KeyE': d.yOffset += d.yStep; used=true; break;
         case 'KeyQ': d.yOffset -= d.yStep; used=true; break;
       }
@@ -350,19 +350,36 @@
     if (changed) this.apply();
   },
 
+
+  //applies the position change
   apply(){
+
+    //t is the target- I believe the camera
     const t=this.data.target; if(!t || !this.head) return;
     const {r, thetaDeg, yOffset} = this.data;
+    console.log(`Applying polar placement: r=${r}, theta=${thetaDeg}, yOffset=${yOffset}`);
     const thetaRad = THREE.MathUtils.degToRad(thetaDeg);
 
     // Place relative to camera position
     const camPos = new THREE.Vector3();
+
+    //I think that head is the achor entity with id head
+    //ray origin is the mouse so I think this is the camera?
+    //then what is t?
+
+
+    //but anyway, here we are getting the world position of the camera
+    //and storing it in camPos
     this.head.object3D.getWorldPosition(camPos);
 
+    //compute x,y,z from the radius and theta
+    //y (height) is separate
     const x = r * Math.sin(thetaRad);
     const z = r * Math.cos(thetaRad);
     const y = yOffset;
 
+    //I don't understand why we are adding here
+    //anyway it works out
     const newPos = new THREE.Vector3(camPos.x + x, camPos.y + y, camPos.z + z);
     t.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
 
