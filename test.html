@@ -418,7 +418,7 @@
         const xrActive = (leftPad && leftPad.connected) || (rightPad && rightPad.connected);
 
         // use raw gamepad if no active XR pads
-        this.useRawGamepad = !xrActive;
+        this.useRawGamepad = false;
         // console.log(`Polar placement using ${this.useRawGamepad ? 'raw gamepad' : 'XR controllers'}`);
 
         // Now pull from the appropriate source
