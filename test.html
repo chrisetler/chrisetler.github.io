@@ -229,7 +229,7 @@
 
         // Keyboard step sizes (per key press)
         rStep: { type: 'number', default: 0.2 },
-        thetaStep: { type: 'number', default: 5 },
+        thetaStep: { type: 'number', default: 1 },
         yStep: { type: 'number', default: 0.1 },
 
         // VR analog speeds (units/sec)
@@ -290,14 +290,23 @@
           let used = false;
 
           // dynamic scaling based on distance (closer -> slower)
-          const minSpeedScale = 0.01;          // never go below 20% speed
-          const maxSpeedScale = 10.0;          // normal at far distance
+          // const minSpeedScale = 0.01;          // never go below 20% speed
+          // const maxSpeedScale = 10.0;          // normal at far distance
           const maxRange = .025;         // start scaling below this distance
-          const scale = Math.max(minSpeedScale,
-            Math.min(maxSpeedScale, d.r / maxRange));
+
+          //speed is linear from max of 10% radius at 0 to 0 at radius
+
+          let panoRadius = d.target.getAttribute('radius');
+          let maxSpeed = 0.10
+          let scale = maxSpeed * (1 - d.r / panoRadius) * panoRadius
+          // console.log("scale is", scale);
 
           // slower turning (A/D)
-          const thetaStepScaled = d.thetaStep * 0.1;   // 50% of normal
+          const thetaStepScaled = d.thetaStep * (1 - d.r / panoRadius); //similar scale for the theta
+          console.log("theta step scaled is", thetaStepScaled);
+
+          //same scaling for up down
+          const yStepScaled = d.yStep * (1 - d.r / panoRadius);
 
           switch (e.code) {
             case 'KeyW':
@@ -317,15 +326,31 @@
               used = true;
               break;
             case 'KeyE':
-              d.yOffset += d.yStep;
+              d.yOffset += yStepScaled;
               used = true;
               break;
             case 'KeyQ':
-              d.yOffset -= d.yStep;
+              d.yOffset -= yStepScaled;
               used = true;
               break;
           }
+
+
+          //don't let r be greater than the actual radius of the pano
+          if (d.r >= d.target.getAttribute('radius')) {
+            // console.log(`Clamping r from ${d.r} to pano radius`);
+            d.r = d.target.getAttribute('radius') * .95;
+          }
+          //don't let r be less than 0.01
+          if (d.r < 0.01) {
+            // console.log(`Clamping r from ${d.r} to 0.01`);
+            d.r = 0.01;
+          }
+
+
+
           if (used) {
+            console.log(`Polar placement key: r=${d.r.toFixed(2)}, theta=${d.thetaDeg.toFixed(1)}, yOffset=${d.yOffset.toFixed(2)}`);
             e.preventDefault();
             e.stopPropagation();
             this.apply();
@@ -481,7 +506,16 @@
 
         //t is the target- I believe the camera
         const t = this.data.target; if (!t || !this.head) return;
-        const { r, thetaDeg, yOffset } = this.data;
+        //print all info on the target
+        console.log('Polar placement apply to target:', t);
+        window.t = t;
+
+
+        let { r, thetaDeg, yOffset } = this.data;
+
+
+
+
         console.log(`Applying polar placement: r=${r}, theta=${thetaDeg}, yOffset=${yOffset}`);
         const thetaRad = THREE.MathUtils.degToRad(thetaDeg);
 
@@ -550,6 +584,21 @@
 
     <!-- Example still image -->
     <!-- <a-image src="photos/IMG_20251024_0001_04.jpg" position="0 1.7 -3" width="0.6" height="0.87"></a-image> -->
+
+
+    <!-- for reference a sphere at the center-->
+    <!-- <a-sphere position="0 0 0" radius="0.25" color="blue"></a-sphere> -->
+
+    <a-scene>
+      <!-- arrow body -->
+      <a-cylinder position="0 0.125 0" radius="0.02" height="0.25" color="blue"></a-cylinder>
+
+      <!-- arrowhead -->
+      <a-cone position="0 0.25 0" radius-bottom="0.05" radius-top="0" height="0.1" color="blue"
+        rotation="90 180 0"></a-cone>
+    </a-scene>
+
+
 
     <!-- Cylindrical panorama WITH ID -->
     <a-cylinder id="pano" position="0 0 0" rotation="0 90 0" radius="5" height="3" theta-length="180" open-ended="true"
