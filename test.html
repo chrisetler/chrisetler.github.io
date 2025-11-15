@@ -230,7 +230,7 @@
         // Keyboard step sizes (per key press)
         rStep: { type: 'number', default: 0.2 },
         thetaStep: { type: 'number', default: 1 },
-        yStep: { type: 'number', default: 0.1 },
+        // yStep: { type: 'number', default: 0.1 },
 
         // VR analog speeds (units/sec)
         rSpeed: { type: 'number', default: 1.5 },       // meters per second per full tilt
@@ -243,38 +243,9 @@
         faceRig: { type: 'boolean', default: true }
       },
 
-      _getStandardGamepad() {
-        const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-        for (const gp of pads) {
-          if (!gp) continue;
-          // Prefer Standard mapping (Xbox/DS4 on Windows/Chrome)
-          if (gp.mapping === 'standard') return gp;
-        }
-        return null;
-      },
-      _readGamepadAxes() {
-        const gp = this._getStandardGamepad();
-        if (!gp) return { lx: 0, ly: 0, rx: 0, ry: 0, b: false };
-
-        // Standard mapping (Xbox):
-        //  axes[0]=LS X, axes[1]=LS Y, axes[2]=RS X, axes[3]=RS Y
-        //  buttons[1] = B
-        return {
-          lx: gp.axes[0] || 0,
-          ly: gp.axes[1] || 0,
-          rx: gp.axes[2] || 0,
-          ry: gp.axes[3] || 0,
-          b: !!(gp.buttons[1] && gp.buttons[1].pressed)
-        };
-      },
 
       init() {
-        this.rig = document.querySelector('#rig');
         this.head = document.querySelector('#head');
-        this.left = document.querySelector('#leftHand');
-        this.right = document.querySelector('#rightHand');
-        // Assume XR inputs exist but may be inactive
-        this.useRawGamepad = true;
 
         // If WebXR hands have real gamepads, we’ll know on first tick
         this._lastT = performance.now();
@@ -284,7 +255,7 @@
         this.axesR = { x: 0, y: 0 };
         this.bHeld = false;
 
-        // ----- Keyboard (still supported) -----
+        // ----- Keyboard controls callback function -----
         this.onKey = (e) => {
           const d = this.data;
           let used = false;
@@ -294,28 +265,37 @@
           // const maxSpeedScale = 10.0;          // normal at far distance
           const maxRange = .025;         // start scaling below this distance
 
-          //speed is linear from max of 10% radius at 0 to 0 at radius
+          //speed is linear from max of 10% radius at 0 to 0 at DIAMTER
 
-          let panoRadius = d.target.getAttribute('radius');
-          let maxSpeed = 0.10
-          let scale = maxSpeed * (1 - d.r / panoRadius) * panoRadius
+          let panoDiameter = 2* d.target.getAttribute('radius');
+          let maxSpeed = .25
+          let scale = maxSpeed * (1 - d.r / panoDiameter) * panoDiameter
           // console.log("scale is", scale);
 
           // slower turning (A/D)
-          const thetaStepScaled = d.thetaStep * (1 - d.r / panoRadius); //similar scale for the theta
-          console.log("theta step scaled is", thetaStepScaled);
+          const thetaStepScaled = d.thetaStep * (1 - d.r / panoDiameter); //similar scale for the theta
+          // console.log("theta step scaled is", thetaStepScaled);
 
           //same scaling for up down
-          const yStepScaled = d.yStep * (1 - d.r / panoRadius);
+          const yStepScaled = 1 * (1 - d.r / panoDiameter);
 
           switch (e.code) {
             case 'KeyW':
               d.r = Math.max(0, d.r + d.rStep * scale);
               used = true;
+
+              console.log("after w: r:", d.r, " theta:", d.thetaDeg);
               break;
+
+
+              // d.r = Math.max(0, d.r + d.rStep * scale);
+              // used = true;
+              // break;
             case 'KeyS':
               d.r = Math.max(0, d.r - d.rStep * scale);
               used = true;
+
+              console.log("after w: r:", d.r, " theta:", d.thetaDeg);
               break;
             case 'KeyD':
               d.thetaDeg -= thetaStepScaled;
@@ -336,8 +316,8 @@
           }
 
 
-          //don't let r be greater than the actual radius of the pano
-          if (d.r >= d.target.getAttribute('radius')) {
+          //don't let r be greater than the actual DIAMETER of the pano
+          if (d.r >= 2*d.target.getAttribute('radius')) {
             // console.log(`Clamping r from ${d.r} to pano radius`);
             d.r = d.target.getAttribute('radius') * .95;
           }
@@ -347,10 +327,19 @@
             d.r = 0.01;
           }
 
+          //don't let thetaDeg abs beyond half the fov of the pano
+          const panoThetaLength = d.target.getAttribute('theta-length');
+          console.log("pano theta length is", panoThetaLength);
+          const halfFov = panoThetaLength / 2;
+          if (Math.abs(d.thetaDeg) > halfFov) {
+            // console.log(`Clamping thetaDeg from ${d.thetaDeg} to ${halfFov}`);
+            d.thetaDeg = Math.sign(d.thetaDeg) * halfFov;
+          }
 
 
+          //if a key was pressed, apply the change
           if (used) {
-            console.log(`Polar placement key: r=${d.r.toFixed(2)}, theta=${d.thetaDeg.toFixed(1)}, yOffset=${d.yOffset.toFixed(2)}`);
+            // console.log(`Polar placement key: r=${d.r.toFixed(2)}, theta=${d.thetaDeg.toFixed(1)}, yOffset=${d.yOffset.toFixed(2)}`);
             e.preventDefault();
             e.stopPropagation();
             this.apply();
@@ -359,30 +348,8 @@
 
         window.addEventListener('keydown', this.onKey);
 
-        // ----- VR: thumbsticks -----
-        // Right stick: y -> r, x -> theta
-        if (this.right) {
-          this.onRightStick = (e) => {
-            if (!e.detail) return;
-            this.axesR.x = e.detail.x || 0;
-            this.axesR.y = e.detail.y || 0;
-          };
-          this.onBdown = () => { this.bHeld = true; };
-          this.onBup = () => { this.bHeld = false; };
-          this.right.addEventListener('thumbstickmoved', this.onRightStick);
-          this.right.addEventListener('bbuttondown', this.onBdown);
-          this.right.addEventListener('bbuttonup', this.onBup);
-        }
 
-        // Left stick: y -> yOffset
-        if (this.left) {
-          this.onLeftStick = (e) => {
-            if (!e.detail) return;
-            this.axesL.x = e.detail.x || 0;
-            this.axesL.y = e.detail.y || 0;
-          };
-          this.left.addEventListener('thumbstickmoved', this.onLeftStick);
-        }
+
 
         // First placement
         this.apply();
@@ -391,114 +358,7 @@
 
       remove() {
         window.removeEventListener('keydown', this.onKey);
-        if (this.right) {
-          this.right.removeEventListener('thumbstickmoved', this.onRightStick);
-          this.right.removeEventListener('bbuttondown', this.onBdown);
-          this.right.removeEventListener('bbuttonup', this.onBup);
-        }
-        if (this.left) {
-          this.left.removeEventListener('thumbstickmoved', this.onLeftStick);
-        }
       },
-
-      tick() {
-
-        const now = performance.now();
-        const dt = (now - this._lastT) / 1000;
-        this._lastT = now;
-
-
-        const d = this.data;
-        const dz = this.data.deadzone;
-        const dzf = (v) => Math.abs(v) < dz ? 0 : v;
-
-        // --- detect if XR controllers are actually active ---
-        let leftPad = this.left?.components['tracked-controls']?.controller;
-        let rightPad = this.right?.components['tracked-controls']?.controller;
-        const xrActive = (leftPad && leftPad.connected) || (rightPad && rightPad.connected);
-
-        // use raw gamepad if no active XR pads
-        this.useRawGamepad = false;
-        // console.log(`Polar placement using ${this.useRawGamepad ? 'raw gamepad' : 'XR controllers'}`);
-
-        // Now pull from the appropriate source
-        let lx = 0, ly = 0, rx = 0, ry = 0, bHeld = false;
-
-        if (this.useRawGamepad) {
-          const gp = this._readGamepadAxes();
-          lx = gp.lx; ly = gp.ly;
-          rx = gp.rx; ry = gp.ry;
-          bHeld = gp.b;
-        } else {
-          lx = this.axesL.x; ly = this.axesL.y;
-          rx = this.axesR.x; ry = this.axesR.y;
-          bHeld = this.bHeld;
-        }
-
-
-        // Right stick raw (desktop or XR), apply deadzone
-        let rYraw = -dzf(ry);  // up should increase r
-        let rXraw = dzf(rx);  // left/right turns theta
-
-        // ---- MUTUAL EXCLUSION (lock one axis): keep the dominant axis only ----
-        if (Math.abs(rXraw) >= Math.abs(rYraw)) rYraw = 0; else rXraw = 0;
-
-        // ---- INVERT left/right ----
-        const rX = -rXraw;
-        const rY = rYraw;
-
-        // Left stick Y -> height (and B + right-stick Y -> height)
-        const lY = -dzf(ly);
-
-        // ---- 40% slower (scale to 60%) ----
-        const speedScale = 0.6;
-        const rSpeed = d.rSpeed * speedScale;
-        const thetaSpeed = d.thetaSpeed * speedScale;
-        const ySpeed = d.ySpeed * speedScale;
-
-        // If B held, right-stick up/down also affects Y (still respects axis lock)
-        const by = bHeld ? rY : 0;
-
-        let changed = false;
-        // Helpers
-        const nearZero = (v, eps = 0.12) => Number.isFinite(v) && Math.abs(v) <= eps;
-        const snap = (v, eps = 0.001) => (Math.abs(v) <= eps ? 0 : v);
-
-        // After you compute rX, rY, lY (post-deadzone + lock + invert):
-        logrX = snap(rX);
-        logrY = snap(rY);
-        loglY = snap(lY);
-
-
-        if (rY !== 0) {
-          d.r = Math.max(0, d.r + rY * rSpeed * dt);
-          changed = true;
-        }
-        if (rX !== 0) {
-          d.thetaDeg = d.thetaDeg + rX * thetaSpeed * dt;
-          changed = true;
-        }
-
-        const yDelta = (lY * ySpeed + by * ySpeed) * dt;
-        if (yDelta !== 0) {
-          d.yOffset = d.yOffset + yDelta;
-          changed = true;
-        }
-
-
-        // If nothing meaningful, bail quietly (no log)
-        if (!(nearZero(logrX) && nearZero(logrY) && nearZero(loglY))) {
-          // Otherwise, log once per meaningful input frame:
-          console.log(`Polar placement input: rX=${rX.toFixed(3)}, rY=${rY.toFixed(3)}, lY=${lY.toFixed(3)}, bHeld=${bHeld}`);
-          console.log(`Polar placement tick: r=${d.r.toFixed(2)}, theta=${d.thetaDeg.toFixed(1)}, yOffset=${d.yOffset.toFixed(2)}`);
-
-        }
-
-
-
-        if (changed) this.apply();
-      }
-      ,
 
 
       //applies the position change
@@ -507,16 +367,13 @@
         //t is the target- I believe the camera
         const t = this.data.target; if (!t || !this.head) return;
         //print all info on the target
-        console.log('Polar placement apply to target:', t);
+        // console.log('Polar placement apply to target:', t);
         window.t = t;
 
 
         let { r, thetaDeg, yOffset } = this.data;
 
-
-
-
-        console.log(`Applying polar placement: r=${r}, theta=${thetaDeg}, yOffset=${yOffset}`);
+        // console.log(`Applying polar placement: r=${r}, theta=${thetaDeg}, yOffset=${yOffset}`);
         const thetaRad = THREE.MathUtils.degToRad(thetaDeg);
 
         // Place relative to camera position
@@ -530,17 +387,32 @@
         //but anyway, here we are getting the world position of the camera
         //and storing it in camPos
         this.head.object3D.getWorldPosition(camPos);
+        // camera position is 0 1.6 0 
 
         //compute x,y,z from the radius and theta
         //y (height) is separate
-        const x = r * Math.sin(thetaRad);
-        const z = r * Math.cos(thetaRad);
+        // const x = r * Math.sin(thetaRad);
+        // const z = r * Math.cos(thetaRad);
+        // const y = yOffset;
+
+        //fixed
+        let pano_radius = this.data.target.getAttribute('radius');
+        const x = (pano_radius-r) * Math.sin(thetaRad);
+        const z = -1* (pano_radius-r) * Math.cos(thetaRad);
         const y = yOffset;
+
+
 
         //I don't understand why we are adding here
         //anyway it works out
         const newPos = new THREE.Vector3(camPos.x + x, camPos.y + y, camPos.z + z);
         t.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
+
+
+        //also need to set it's rotation so it faces the camera
+        t.setAttribute('rotation', `0 ${90 - thetaDeg} 0`);
+
+        // console.log(`Placed pano at x:${newPos.x.toFixed(2)} y:${newPos.y.toFixed(2)} z:${newPos.z.toFixed(2)} (r:${r.toFixed(2)} θ:${thetaDeg.toFixed(1)}° yOffset:${yOffset.toFixed(2)})`);
 
         // Yaw the rig toward the pano (VR-friendly; doesn't fight head)
         if (this.data.faceRig && this.rig) {
