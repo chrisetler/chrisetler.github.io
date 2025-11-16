@@ -11,26 +11,6 @@
     const PANO_IMG_W = 16553; // px
     const PANO_IMG_H = 4092;  // px
 
-
-
-
-    function cartesianToPolarRelativeToCamera(worldPos, cameraEl = document.querySelector('#head')) {
-      const camPos = new THREE.Vector3();
-      cameraEl.object3D.getWorldPosition(camPos);
-
-      const dx = worldPos.x - camPos.x;
-      const dz = worldPos.z - camPos.z;
-      const dy = worldPos.y - camPos.y;
-
-      const r = Math.hypot(dx, dz);
-      const thetaDeg = Math.atan2(dx, dz) * 180 / Math.PI;
-      const yOffset = dy;
-
-      return { r, thetaDeg, yOffset };
-    }
-
-
-
     // ---------- Simple slider (click/laser to set) ----------
     AFRAME.registerComponent('ui-slider', {
       schema: {
@@ -184,6 +164,7 @@
     });
 
     // ---------- Pano controller (distance + theta -> height) ----------
+    // listens to sliders and updates pano attributes for radius and theta-length
     AFRAME.registerComponent('pano-controller', {
       init() {
         console.log('Pano controller init');
@@ -233,6 +214,7 @@
     });
 
     // ---------- Polar placement (WASD + Q/E) + auto-yaw rig toward pano ----------
+    // listens to keyboard input to move the pano
     AFRAME.registerComponent('polar-placement', {
       schema: {
         target: { type: 'selector', default: '#pano' },
@@ -240,18 +222,7 @@
         thetaDeg: { type: 'number', default: 0 },
         yOffset: { type: 'number', default: 0 },
 
-        // Keyboard step sizes (per key press)
-        rStep: { type: 'number', default: 0.2 },
-        thetaStep: { type: 'number', default: 1 },
-        // yStep: { type: 'number', default: 0.1 },
-
-        // VR analog speeds (units/sec)
-        rSpeed: { type: 'number', default: 1.5 },       // meters per second per full tilt
-        thetaSpeed: { type: 'number', default: 60 },    // deg/sec per full tilt
-        ySpeed: { type: 'number', default: 1.0 },       // meters/sec per full tilt
-        deadzone: { type: 'number', default: 0.15 },
-
-        showHUD: { type: 'boolean', default: true },
+        //idk if these do anything important
         hudId: { type: 'string', default: 'polarHUD' },
         faceRig: { type: 'boolean', default: true }
       },
@@ -259,17 +230,6 @@
 
       init() {
         this.head = document.querySelector('#head');
-
-        // If WebXR hands have real gamepads, we’ll know on first tick
-        this._lastT = performance.now();
-
-        // axes state
-        this.axesL = { x: 0, y: 0 };
-        this.axesR = { x: 0, y: 0 };
-        this.bHeld = false;
-
-
-
 
         // ----- Keyboard controls callback function -----
         this.onKey = (e) => {
@@ -279,36 +239,15 @@
           this.data.drot = 0
           let used = false;
 
-          // // dynamic scaling based on distance (closer -> slower)
-          // // const minSpeedScale = 0.01;          // never go below 20% speed
-          // // const maxSpeedScale = 10.0;          // normal at far distance
-          // const maxRange = .025;         // start scaling below this distance
-
-          // //speed is linear from max of 10% radius at 0 to 0 at DIAMTER
-
-          // let panoDiameter = 2* d.target.getAttribute('radius');
-          // let maxSpeed = .25
-          // let scale = maxSpeed * (1 - d.r / panoDiameter) * panoDiameter
-          // // console.log("scale is", scale);
-
-          // // slower turning (A/D)
-          // const thetaStepScaled = d.thetaStep * (1 - d.r / panoDiameter); //similar scale for the theta
-          // // console.log("theta step scaled is", thetaStepScaled);
-
-          // //same scaling for up down
-          // const yStepScaled = 1 * (1 - d.r / panoDiameter);
-
           switch (e.code) {
             case 'KeyW':
-              this.data.dz = -1
+              this.data.dz = 1
               used = true;
               break;
-
             case 'KeyS':
               this.data.dz = -1
               used = true;
               break;
-
             case 'KeyD':
               this.data.drot = -1
               used = true;
@@ -318,41 +257,18 @@
               used = true;
               break;
             case 'KeyE':
-              this.data.dy = 1
+              this.data.dy = -.25
               used = true;
               break;
             case 'KeyQ':
-              this.data.dy = -1
+              this.data.dy = .25
               used = true;
               break;
           }
 
-
-          // //don't let r be greater than the actual DIAMETER of the pano
-          // if (d.r >= 2*d.target.getAttribute('radius')) {
-          //   // console.log(`Clamping r from ${d.r} to pano radius`);
-          //   d.r = d.target.getAttribute('radius') * .95;
-          // }
-          // //don't let r be less than 0.01
-          // if (d.r < 0.01) {
-          //   // console.log(`Clamping r from ${d.r} to 0.01`);
-          //   d.r = 0.01;
-          // }
-
-          // //don't let thetaDeg abs beyond half the fov of the pano
-          // const panoThetaLength = d.target.getAttribute('theta-length');
-          // console.log("pano theta length is", panoThetaLength);
-          // const halfFov = panoThetaLength / 2;
-          // if (Math.abs(180-d.thetaDeg) > halfFov) {
-          //   // console.log(`Clamping thetaDeg from ${d.thetaDeg} to ${halfFov}`);
-          //   d.thetaDeg = Math.sign(d.thetaDeg) * halfFov;
-          // }
-
-
           //if a key was pressed, apply the change
           if (used) {
-            // console.log(`Polar placement key: r=${d.r.toFixed(2)}, theta=${d.thetaDeg.toFixed(1)}, yOffset=${d.yOffset.toFixed(2)}`);
-            console.log(`Key press detected: dz=${this.data.dz}, dy=${this.data.dy}, drot=${this.data.drot}`);
+            // console.log(`Key press detected: dz=${this.data.dz}, dy=${this.data.dy}, drot=${this.data.drot}`);
             e.preventDefault();
             e.stopPropagation();
             this.apply();
@@ -360,13 +276,8 @@
         };
 
         window.addEventListener('keydown', this.onKey);
-
-
-
-
         // First placement
         this.apply();
-        this._lastT = performance.now();
       },
 
       remove() {
@@ -374,59 +285,16 @@
       },
 
 
-      //applies the position change
+      //applies the position change to the pano
       apply() {
-
         //t is the target- I believe the camera
         const t = this.data.target; if (!t || !this.head) return;
         //print all info on the target
-        // console.log('Polar placement apply to target:', t);
         window.t = t;
 
-
-        let { r, thetaDeg, yOffset } = this.data;
-
-        // console.log(`Applying polar placement: r=${r}, theta=${thetaDeg}, yOffset=${yOffset}`);
-        const thetaRad = THREE.MathUtils.degToRad(180-thetaDeg);
-
-        // Place relative to camera position
-        // const camPos = new THREE.Vector3();
-
-        // //I think that head is the achor entity with id head
-        // //ray origin is the mouse so I think this is the camera?
-        // //then what is t?
-
-
-        // //but anyway, here we are getting the world position of the camera
-        // //and storing it in camPos
-        // this.head.object3D.getWorldPosition(camPos);
-        // camera position is 0 1.6 0 
-
-        //compute x,y,z from the radius and theta
-        //y (height) is separate
-        // const x = r * Math.sin(thetaRad);
-        // const z = r * Math.cos(thetaRad);
-        // const y = yOffset;
-
-
-
-        //
-        // this.data.dx = 0
-        // this.data.dz = 0
-        // this.data.dy = 0
-        // this.data.drot = 0
-
-
-
-        //I don't understand why we are adding here
-        //anyway it works out
         // get current position x y z and rotation
         let currentPos = t.getAttribute('position');
         let currentRot = t.getAttribute('rotation');
-
-        window.test = window.test || {};
-        window.test.currentPos = currentPos;
-        window.test.currentRot = currentRot;
 
         // compute new position based on current position and deltas
         let newPos = {
@@ -437,27 +305,32 @@
         let newRotY = currentRot.y + this.data.drot;
 
 
-        // t.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
-        // //also need to set it's rotation so it faces the camera
-        // t.setAttribute('rotation', `0 ${newRotY} 0`);
+        //don't let z be greater than the radius of the pano
+        const panoRadius = t.getAttribute('radius');
+        if (newPos.z > panoRadius - 0.05) {
+          newPos.z = panoRadius - 0.05;
+        }
+
+        // if any is NaN ignore the update - happens on first load
+        if (isNaN(newPos.x) || isNaN(newPos.y) || isNaN(newPos.z) || isNaN(newRotY)) {
+          console.warn('Polar placement: computed NaN position or rotation, ignoring update');
+          return;
+        }
+
+
+        t.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
+        //also need to set it's rotation so it faces the camera
+        t.setAttribute('rotation', `0 ${newRotY} 0`);
+
+        //also update the pano position marker and pano_ghost
+        const pano_marker = document.querySelector('#pano_position_marker');
+        pano_marker.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
+        const pano_ghost = document.querySelector('#pano_ghost');
+        pano_ghost.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
+
 
         console.log(`New position: x=${newPos.x.toFixed(2)}, y=${newPos.y.toFixed(2)}, z=${newPos.z.toFixed(2)}, rotY=${newRotY.toFixed(1)}`);
 
-        // // Yaw the rig toward the pano (VR-friendly; doesn't fight head)
-        // if (this.data.faceRig && this.rig) {
-        //   const rigPos = new THREE.Vector3(); this.rig.object3D.getWorldPosition(rigPos);
-        //   const dx = newPos.x - rigPos.x, dz = newPos.z - rigPos.z;
-        //   const yawDeg = Math.atan2(dx, dz) * 180 / Math.PI;
-        //   const rot = this.rig.getAttribute('rotation') || { x: 0, y: 0, z: 0 };
-        //   this.rig.setAttribute('rotation', { x: rot.x, y: yawDeg, z: rot.z });
-        // }
-
-        // HUD
-        // if (this.data.showHUD){
-        //   const hud = document.getElementById(this.data.hudId);
-        //   if (hud) hud.setAttribute('value',
-        //     `r: ${r.toFixed(2)} m   θ: ${thetaDeg.toFixed(1)}°   y: ${yOffset.toFixed(2)} m`);
-        // }
       }
     });
   </script>
@@ -479,18 +352,6 @@
       <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .ui-interactive, .ui-hitbox"></a-entity>
     </a-entity>
 
-    <!-- Optional HUD for polar controls
-    <a-text id="polarHUD" value="r: 0.00 m   θ: 0.0°   y: 0.00 m" color="#fff" align="center" width="2.6"
-      position="0 1.3 -1.2"></a-text> -->
-
-    <!-- Example still image -->
-    <!-- <a-image src="photos/IMG_20251024_0001_04.jpg" position="0 1.7 -3" width="0.6" height="0.87"></a-image> -->
-
-
-    <!-- for reference a sphere at the center-->
-    <!-- <a-sphere position="0 0 0" radius="0.25" color="blue"></a-sphere> -->
-
-
 
 
     <a-assets>
@@ -500,15 +361,12 @@
 
 
 
+    <!-- Axes for reference -->
     <a-scene>
       <!-- z axis -->
       <a-cylinder position="0 0 0" rotation="90 0 0" radius="0.02" height="100" color="blue"></a-cylinder>
       <!-- x axis -->
       <a-cylinder position="0 0 0" rotation="0 0 90" radius="0.02" height="100" color="red"></a-cylinder>
-
-      <!-- arrowhead -->
-      <!-- <a-cone position="0 0 0" radius-bottom="0.05" radius-top="0" height="0.1" color="blue"
-        rotation="90 180 0"></a-cone> -->
     </a-scene>
 
 
@@ -518,13 +376,13 @@
       side="back" src="photos/IMG_0466-Pano.jpg">
     </a-cylinder>
 
-    <!-- for debug, a 360 degree cylinder for reference-->
+    <!-- for debug, a 360 degree cylinder for reference - make opactiy >0 to turn on -->
      <a-cylinder id="pano_ghost" position="0 0 -10" rotation="0 90 0" radius="5" height=".1" theta-length="360" open-ended="false"
-      side="back" color="grey" opacity="0.2">
+      side="back" color="grey" opacity="0">
     </a-cylinder>
 
     <!-- for debug, a dot at the "position" of the pano-->
-    <a-sphere id="pano_position_marker" position="0 0 -10" radius="0.1" color="red"></a-sphere>
+    <a-sphere id="pano_position_marker" position="0 0 -10" radius="0.1" color="red" opactiy="0"></a-sphere>
 
 
     <!-- MENU PANEL (toggled with Space/A) -->
