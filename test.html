@@ -197,7 +197,7 @@
         const heightM = (PANO_IMG_H / PANO_IMG_W) * thetaRad * radiusM;
         this.pano.setAttribute('radius', radiusM);
         this.pano.setAttribute('theta-length', thetaDeg);
-        this.pano.setAttribute('theta-start', 180 - (thetaDeg / 2));
+        this.pano.setAttribute('theta-start', 90 - (thetaDeg / 2));
         this.pano.setAttribute('height', heightM);
         this.pano.setAttribute('open-ended', true);
         this.pano.setAttribute('side', 'back');
@@ -222,214 +222,229 @@
         r: { type: 'number', default: 0 },
         thetaDeg: { type: 'number', default: 0 },
         yOffset: { type: 'number', default: 0 },
+
+        //idk if these do anything important
         hudId: { type: 'string', default: 'polarHUD' },
         faceRig: { type: 'boolean', default: true }
       },
 
+
       init() {
         this.head = document.querySelector('#head');
 
-        // --- keyboard deltas (your old behavior) ---
-        this.data.dx = 0;
-        this.data.dy = 0;
-        this.data.dz = 0;
-        this.data.drot = 0;
-
+        // ----- Keyboard controls callback function -----
         this.onKey = (e) => {
-          this.data.dx = 0;
-          this.data.dz = 0;
-          this.data.dy = 0;
-          this.data.drot = 0;
-
+          this.data.dx = 0
+          this.data.dz = 0
+          this.data.dy = 0
+          this.data.drot = 0
           let used = false;
 
           switch (e.code) {
             case 'KeyW':
-              this.data.dz = 1;
+              this.data.dz = 1
               used = true;
               break;
             case 'KeyS':
-              this.data.dz = -1;
+              this.data.dz = -1
               used = true;
               break;
             case 'KeyD':
-              this.data.drot = -1;
+              this.data.drot = -1
               used = true;
               break;
             case 'KeyA':
-              this.data.drot = 1;
+              this.data.drot = 1
               used = true;
               break;
             case 'KeyE':
-              this.data.dy = -0.25;
+              this.data.dy = -.25
               used = true;
               break;
             case 'KeyQ':
-              this.data.dy = 0.25;
+              this.data.dy = .25
               used = true;
               break;
           }
 
+          //if a key was pressed, apply the change
           if (used) {
+            // console.log(`Key press detected: dz=${this.data.dz}, dy=${this.data.dy}, drot=${this.data.drot}`);
             e.preventDefault();
             e.stopPropagation();
-            this.applyDiscrete();   // keyboard-style step
+            this.apply();
           }
         };
 
         window.addEventListener('keydown', this.onKey);
-
-        // --- Quest stick axes state ---
-        this.leftAxes = [0, 0];   // [x, y]
-        this.rightAxes = [0, 0];   // [x, y]
-
-        const leftHand = document.querySelector('#leftHand');
-        const rightHand = document.querySelector('#rightHand');
-
-        this._onLeftAxis = (e) => {
-          const a = e.detail.axis || [];
-          // On Quest, a[0], a[1] are usually left stick x/y.
-          this.leftAxes[0] = a[0] || 0;
-          this.leftAxes[1] = a[1] || 0;
-        };
-
-        this._onRightAxis = (e) => {
-          const a = e.detail.axis || [];
-          // Right stick often shows up as a[2], a[3] on the same event;
-          // but different browsers can differ. If that's the case for you,
-          // you can move these indices around.
-          this.rightAxes[0] = a[2] || 0;
-          this.rightAxes[1] = a[3] || 0;
-        };
-
-        if (leftHand) leftHand.addEventListener('axismove', this._onLeftAxis);
-        if (rightHand) rightHand.addEventListener('axismove', this._onRightAxis);
-
         // First placement
-        this.applyDiscrete();
+        this.apply();
       },
 
       remove() {
         window.removeEventListener('keydown', this.onKey);
-
-        const leftHand = document.querySelector('#leftHand');
-        const rightHand = document.querySelector('#rightHand');
-
-        if (leftHand && this._onLeftAxis) {
-          leftHand.removeEventListener('axismove', this._onLeftAxis);
-        }
-        if (rightHand && this._onRightAxis) {
-          rightHand.removeEventListener('axismove', this._onRightAxis);
-        }
       },
 
-      // --- keyboard-style "step" moves (your original apply) ---
-      applyDiscrete() {
-        const t = this.data.target;
-        if (!t || !this.head) return;
 
-        window.t = t; // debug
+      //applies the position change to the pano
+      apply() {
+        //t is the target- I believe the camera
+        const t = this.data.target; if (!t || !this.head) return;
+        //print all info on the target
+        window.t = t;
 
+        // get current position x y z and rotation
         let currentPos = t.getAttribute('position');
         let currentRot = t.getAttribute('rotation');
 
+        // compute new position based on current position and deltas
         let newPos = {
-          x: currentPos.x + (this.data.dx || 0),
-          y: currentPos.y + (this.data.dy || 0),
-          z: currentPos.z + (this.data.dz || 0)
+          x: currentPos.x + this.data.dx,
+          y: currentPos.y + this.data.dy,
+          z: currentPos.z + this.data.dz
         };
-        let newRotY = currentRot.y + (this.data.drot || 0);
+        let newRotY = currentRot.y + this.data.drot;
 
+
+        //don't let z be greater than the radius of the pano
         const panoRadius = t.getAttribute('radius');
         if (newPos.z > panoRadius - 0.05) {
           newPos.z = panoRadius - 0.05;
         }
 
+        // if any is NaN ignore the update - happens on first load
         if (isNaN(newPos.x) || isNaN(newPos.y) || isNaN(newPos.z) || isNaN(newRotY)) {
           console.warn('Polar placement: computed NaN position or rotation, ignoring update');
           return;
         }
 
+
         t.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
+        //also need to set it's rotation so it faces the camera
         t.setAttribute('rotation', `0 ${newRotY} 0`);
 
+        //also update the pano position marker and pano_ghost
         const pano_marker = document.querySelector('#pano_position_marker');
-        if (pano_marker) pano_marker.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
-
+        pano_marker.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
         const pano_ghost = document.querySelector('#pano_ghost');
-        if (pano_ghost) pano_ghost.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
+        pano_ghost.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
 
-        console.log(
-          `New position (keyboard): x=${newPos.x.toFixed(2)}, y=${newPos.y.toFixed(2)}, z=${newPos.z.toFixed(2)}, rotY=${newRotY.toFixed(1)}`
-        );
+
+        console.log(`New position: x=${newPos.x.toFixed(2)}, y=${newPos.y.toFixed(2)}, z=${newPos.z.toFixed(2)}, rotY=${newRotY.toFixed(1)}`);
+
+      }
+    });
+
+
+
+    // ---------- Pano joystick controls (Meta Quest thumbsticks) ----------
+    AFRAME.registerComponent('pano-joystick-controls', {
+      schema: {
+        target: { type: 'selector', default: '#pano' }
       },
 
-      // --- joystick continuous movement ---
-      tick(time, dt) {
-        const t = this.data.target;
-        if (!t || !this.head) return;
+      init() {
+        this.target = this.data.target;
+        this.deadzone = 0.15;
+        this.moveSpeed = 2.0;     // m/s forward/back
+        this.verticalSpeed = 1.0; // m/s up/down
+        this.rotateSpeed = 60.0;  // deg/s yaw
 
-        const deadzone = 0.15;
-        const moveSpeed = 2.0;   // m/s forward/back
-        const verticalSpeed = 1.0;   // m/s up/down
-        const rotateSpeed = 60.0;  // deg/s yaw
+        this.leftStick = { x: 0, y: 0 };
+        this.rightStick = { x: 0, y: 0 };
+
+        const leftHand = document.querySelector('#leftHand');
+        const rightHand = document.querySelector('#rightHand');
+
+        if (leftHand) {
+          leftHand.addEventListener('thumbstickmoved', (evt) => {
+            // evt.detail = {x, y}
+            this.leftStick.x = evt.detail.x || 0;
+            this.leftStick.y = evt.detail.y || 0;
+          });
+        }
+
+        if (rightHand) {
+          rightHand.addEventListener('thumbstickmoved', (evt) => {
+            this.rightStick.x = evt.detail.x || 0;
+            this.rightStick.y = evt.detail.y || 0;
+          });
+        }
+
+        console.log('pano-joystick-controls initialized');
+      },
+
+      tick(time, dt) {
+        if (!this.target) return;
+
+        const pos = this.target.getAttribute('position');
+        const rot = this.target.getAttribute('rotation');
+        if (!pos || !rot) return;
+
         const deltaSec = dt / 1000;
 
-        let pos = t.getAttribute('position');
-        let rot = t.getAttribute('rotation');
         let changed = false;
 
-        // LEFT STICK: forward/back (z) and rotate (y)
-        const lx = this.leftAxes[0];
-        const ly = this.leftAxes[1];
+        // --- LEFT STICK: forward/back + rotate (W/S + A/D) ---
+        const lx = this.leftStick.x;
+        const ly = this.leftStick.y;
 
-        if (Math.abs(ly) > deadzone) {
-          // push stick forward (negative y) -> move pano toward camera (positive z)
-          pos.z += -ly * moveSpeed * deltaSec;
+        // forward/back on z
+        if (Math.abs(ly) > this.deadzone) {
+          // stick up (y < 0) -> move pano toward camera (positive z)
+          pos.z += -ly * this.moveSpeed * deltaSec;
           changed = true;
         }
 
-        if (Math.abs(lx) > deadzone) {
-          // left/right to rotate pano
-          rot.y += -lx * rotateSpeed * deltaSec;
+        // yaw rotation
+        if (Math.abs(lx) > this.deadzone) {
+          // stick right (x > 0) -> rotate pano right (negative yaw)
+          rot.y += -lx * this.rotateSpeed * deltaSec;
           changed = true;
         }
 
-        // RIGHT STICK: up/down (y)
-        const ry = this.rightAxes[1];
+        // --- RIGHT STICK: up/down (Q/E) ---
+        const ry = this.rightStick.y;
 
-        if (Math.abs(ry) > deadzone) {
-          // push stick forward (negative y) -> move pano up
-          pos.y += -ry * verticalSpeed * deltaSec;
+        if (Math.abs(ry) > this.deadzone) {
+          // stick up (y < 0) -> move pano up
+          pos.y += -ry * this.verticalSpeed * deltaSec;
           changed = true;
         }
 
         if (!changed) return;
 
-        // clamp z to stay outside radius
-        const panoRadius = t.getAttribute('radius');
-        if (pos.z > panoRadius - 0.05) {
-          pos.z = panoRadius - 0.05;
+        // Clamp z so the pano doesn't pass "through" itself
+        const panoRadius = this.target.getAttribute('radius');
+        if (panoRadius != null && !isNaN(panoRadius)) {
+          if (pos.z > panoRadius - 0.05) {
+            pos.z = panoRadius - 0.05;
+          }
         }
 
-        if (isNaN(pos.x) || isNaN(pos.y) || isNaN(pos.z) || isNaN(rot.y)) {
-          console.warn('Polar placement (sticks): NaN position/rotation, ignoring update');
+        if (
+          isNaN(pos.x) || isNaN(pos.y) || isNaN(pos.z) ||
+          isNaN(rot.y)
+        ) {
+          console.warn('pano-joystick-controls: NaN position/rotation, ignoring update');
           return;
         }
 
-        t.setAttribute('position', pos);
-        t.setAttribute('rotation', `0 ${rot.y} 0`);
+        this.target.setAttribute('position', pos);
+        this.target.setAttribute('rotation', `0 ${rot.y} 0`);
 
+        // Keep your markers in sync
         const pano_marker = document.querySelector('#pano_position_marker');
         if (pano_marker) pano_marker.setAttribute('position', pos);
 
         const pano_ghost = document.querySelector('#pano_ghost');
         if (pano_ghost) pano_ghost.setAttribute('position', pos);
 
-        // Optional: comment this out if it’s spammy
-        // console.log(`New position (sticks): x=${pos.x.toFixed(2)}, y=${pos.y.toFixed(2)}, z=${pos.z.toFixed(2)}, rotY=${rot.y.toFixed(1)}`);
+        // Uncomment if you want spammy logs:
+        // console.log(`Pano (sticks): x=${pos.x.toFixed(2)}, y=${pos.y.toFixed(2)}, z=${pos.z.toFixed(2)}, rotY=${rot.y.toFixed(1)}`);
       }
     });
+
 
   </script>
 </head>
@@ -438,7 +453,8 @@
   <a-scene>
     <!-- RIG (gamepad locomotion only, so WASD is free for polar placement) -->
     <a-entity id="rig" locomotion-manager menu-toggle pano-controller
-      polar-placement="target: #pano; hudId: polarHUD; r: 0; thetaDeg: 0; yOffset: 0; faceRig: true">
+      polar-placement="target: #pano; hudId: polarHUD; r: 0; thetaDeg: 0; yOffset: 0; faceRig: true"
+      pano-joystick-controls="target: #pano">
 
 
       <!-- Camera -->
@@ -446,8 +462,14 @@
         raycaster="objects: .ui-interactive, .ui-hitbox" position="0 1 1"></a-entity>
 
       <!-- Hands / lasers -->
-      <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .ui-interactive, .ui-hitbox"></a-entity>
-      <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .ui-interactive, .ui-hitbox"></a-entity>
+      <a-entity id="leftHand" meta-touch-controls="hand: left" laser-controls="hand: left"
+        raycaster="objects: .ui-interactive, .ui-hitbox"></a-entity>
+
+      <a-entity id="rightHand" meta-touch-controls="hand: right" laser-controls="hand: right"
+        raycaster="objects: .ui-interactive, .ui-hitbox"></a-entity>
+
+
+
     </a-entity>
 
 
