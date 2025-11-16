@@ -186,6 +186,8 @@
     // ---------- Pano controller (distance + theta -> height) ----------
     AFRAME.registerComponent('pano-controller', {
       init() {
+        console.log('Pano controller init');
+
         this.pano = document.querySelector('#pano');
         this.distanceSlider = document.querySelector('#distanceSlider');
         this.thetaSlider = document.querySelector('#thetaSlider');
@@ -201,6 +203,7 @@
           ready(this.distanceSlider, 'ui-slider'),
           ready(this.thetaSlider, 'ui-slider')
         ]).then(([_, dComp, tComp]) => {
+          console.log('Pano controller ready');
           const initDistance = 5.0, initTheta = 180.0;
           dComp.setValue(initDistance); tComp.setValue(initTheta); this._apply(initDistance, initTheta);
           this.distanceSlider.addEventListener('distance', (e) => { const r = e.detail.value; const t = this.thetaSlider.components['ui-slider'].data.value; this._apply(r, t); });
@@ -208,13 +211,23 @@
         });
       },
       _apply(radiusM, thetaDeg) {
+        console.log(`Pano controller apply: radius=${radiusM} m, theta=${thetaDeg} deg`);
         const thetaRad = thetaDeg * Math.PI / 180;
         const heightM = (PANO_IMG_H / PANO_IMG_W) * thetaRad * radiusM;
         this.pano.setAttribute('radius', radiusM);
         this.pano.setAttribute('theta-length', thetaDeg);
+        this.pano.setAttribute('theta-start', 90 - (thetaDeg / 2));
         this.pano.setAttribute('height', heightM);
         this.pano.setAttribute('open-ended', true);
         this.pano.setAttribute('side', 'back');
+
+        //upate the ghost as well
+        const pano_ghost = document.querySelector('#pano_ghost');
+        pano_ghost.setAttribute('radius', radiusM);
+        
+
+
+
         if (this.heightReadout) { this.heightReadout.setAttribute('value', `Computed height: ${heightM.toFixed(3)} m`); }
       }
     });
@@ -255,91 +268,91 @@
         this.axesR = { x: 0, y: 0 };
         this.bHeld = false;
 
+
+
+
         // ----- Keyboard controls callback function -----
         this.onKey = (e) => {
-          const d = this.data;
+          this.data.dx = 0
+          this.data.dz = 0
+          this.data.dy = 0
+          this.data.drot = 0
           let used = false;
 
-          // dynamic scaling based on distance (closer -> slower)
-          // const minSpeedScale = 0.01;          // never go below 20% speed
-          // const maxSpeedScale = 10.0;          // normal at far distance
-          const maxRange = .025;         // start scaling below this distance
+          // // dynamic scaling based on distance (closer -> slower)
+          // // const minSpeedScale = 0.01;          // never go below 20% speed
+          // // const maxSpeedScale = 10.0;          // normal at far distance
+          // const maxRange = .025;         // start scaling below this distance
 
-          //speed is linear from max of 10% radius at 0 to 0 at DIAMTER
+          // //speed is linear from max of 10% radius at 0 to 0 at DIAMTER
 
-          let panoDiameter = 2* d.target.getAttribute('radius');
-          let maxSpeed = .25
-          let scale = maxSpeed * (1 - d.r / panoDiameter) * panoDiameter
-          // console.log("scale is", scale);
+          // let panoDiameter = 2* d.target.getAttribute('radius');
+          // let maxSpeed = .25
+          // let scale = maxSpeed * (1 - d.r / panoDiameter) * panoDiameter
+          // // console.log("scale is", scale);
 
-          // slower turning (A/D)
-          const thetaStepScaled = d.thetaStep * (1 - d.r / panoDiameter); //similar scale for the theta
-          // console.log("theta step scaled is", thetaStepScaled);
+          // // slower turning (A/D)
+          // const thetaStepScaled = d.thetaStep * (1 - d.r / panoDiameter); //similar scale for the theta
+          // // console.log("theta step scaled is", thetaStepScaled);
 
-          //same scaling for up down
-          const yStepScaled = 1 * (1 - d.r / panoDiameter);
+          // //same scaling for up down
+          // const yStepScaled = 1 * (1 - d.r / panoDiameter);
 
           switch (e.code) {
             case 'KeyW':
-              d.r = Math.max(0, d.r + d.rStep * scale);
+              this.data.dz = -1
               used = true;
-
-              console.log("after w: r:", d.r, " theta:", d.thetaDeg);
               break;
 
-
-              // d.r = Math.max(0, d.r + d.rStep * scale);
-              // used = true;
-              // break;
             case 'KeyS':
-              d.r = Math.max(0, d.r - d.rStep * scale);
+              this.data.dz = -1
               used = true;
-
-              console.log("after w: r:", d.r, " theta:", d.thetaDeg);
               break;
+
             case 'KeyD':
-              d.thetaDeg -= thetaStepScaled;
+              this.data.drot = -1
               used = true;
               break;
             case 'KeyA':
-              d.thetaDeg += thetaStepScaled;
+              this.data.drot = 1
               used = true;
               break;
             case 'KeyE':
-              d.yOffset += yStepScaled;
+              this.data.dy = 1
               used = true;
               break;
             case 'KeyQ':
-              d.yOffset -= yStepScaled;
+              this.data.dy = -1
               used = true;
               break;
           }
 
 
-          //don't let r be greater than the actual DIAMETER of the pano
-          if (d.r >= 2*d.target.getAttribute('radius')) {
-            // console.log(`Clamping r from ${d.r} to pano radius`);
-            d.r = d.target.getAttribute('radius') * .95;
-          }
-          //don't let r be less than 0.01
-          if (d.r < 0.01) {
-            // console.log(`Clamping r from ${d.r} to 0.01`);
-            d.r = 0.01;
-          }
+          // //don't let r be greater than the actual DIAMETER of the pano
+          // if (d.r >= 2*d.target.getAttribute('radius')) {
+          //   // console.log(`Clamping r from ${d.r} to pano radius`);
+          //   d.r = d.target.getAttribute('radius') * .95;
+          // }
+          // //don't let r be less than 0.01
+          // if (d.r < 0.01) {
+          //   // console.log(`Clamping r from ${d.r} to 0.01`);
+          //   d.r = 0.01;
+          // }
 
-          //don't let thetaDeg abs beyond half the fov of the pano
-          const panoThetaLength = d.target.getAttribute('theta-length');
-          console.log("pano theta length is", panoThetaLength);
-          const halfFov = panoThetaLength / 2;
-          if (Math.abs(d.thetaDeg) > halfFov) {
-            // console.log(`Clamping thetaDeg from ${d.thetaDeg} to ${halfFov}`);
-            d.thetaDeg = Math.sign(d.thetaDeg) * halfFov;
-          }
+          // //don't let thetaDeg abs beyond half the fov of the pano
+          // const panoThetaLength = d.target.getAttribute('theta-length');
+          // console.log("pano theta length is", panoThetaLength);
+          // const halfFov = panoThetaLength / 2;
+          // if (Math.abs(180-d.thetaDeg) > halfFov) {
+          //   // console.log(`Clamping thetaDeg from ${d.thetaDeg} to ${halfFov}`);
+          //   d.thetaDeg = Math.sign(d.thetaDeg) * halfFov;
+          // }
 
 
           //if a key was pressed, apply the change
           if (used) {
             // console.log(`Polar placement key: r=${d.r.toFixed(2)}, theta=${d.thetaDeg.toFixed(1)}, yOffset=${d.yOffset.toFixed(2)}`);
+            console.log(`Key press detected: dz=${this.data.dz}, dy=${this.data.dy}, drot=${this.data.drot}`);
             e.preventDefault();
             e.stopPropagation();
             this.apply();
@@ -374,19 +387,19 @@
         let { r, thetaDeg, yOffset } = this.data;
 
         // console.log(`Applying polar placement: r=${r}, theta=${thetaDeg}, yOffset=${yOffset}`);
-        const thetaRad = THREE.MathUtils.degToRad(thetaDeg);
+        const thetaRad = THREE.MathUtils.degToRad(180-thetaDeg);
 
         // Place relative to camera position
-        const camPos = new THREE.Vector3();
+        // const camPos = new THREE.Vector3();
 
-        //I think that head is the achor entity with id head
-        //ray origin is the mouse so I think this is the camera?
-        //then what is t?
+        // //I think that head is the achor entity with id head
+        // //ray origin is the mouse so I think this is the camera?
+        // //then what is t?
 
 
-        //but anyway, here we are getting the world position of the camera
-        //and storing it in camPos
-        this.head.object3D.getWorldPosition(camPos);
+        // //but anyway, here we are getting the world position of the camera
+        // //and storing it in camPos
+        // this.head.object3D.getWorldPosition(camPos);
         // camera position is 0 1.6 0 
 
         //compute x,y,z from the radius and theta
@@ -395,33 +408,49 @@
         // const z = r * Math.cos(thetaRad);
         // const y = yOffset;
 
-        //fixed
-        let pano_radius = this.data.target.getAttribute('radius');
-        const x = (pano_radius-r) * Math.sin(thetaRad);
-        const z = -1* (pano_radius-r) * Math.cos(thetaRad);
-        const y = yOffset;
+
+
+        //
+        // this.data.dx = 0
+        // this.data.dz = 0
+        // this.data.dy = 0
+        // this.data.drot = 0
 
 
 
         //I don't understand why we are adding here
         //anyway it works out
-        const newPos = new THREE.Vector3(camPos.x + x, camPos.y + y, camPos.z + z);
-        t.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
+        // get current position x y z and rotation
+        let currentPos = t.getAttribute('position');
+        let currentRot = t.getAttribute('rotation');
+
+        window.test = window.test || {};
+        window.test.currentPos = currentPos;
+        window.test.currentRot = currentRot;
+
+        // compute new position based on current position and deltas
+        let newPos = {
+          x: currentPos.x + this.data.dx,
+          y: currentPos.y + this.data.dy,
+          z: currentPos.z + this.data.dz
+        };
+        let newRotY = currentRot.y + this.data.drot;
 
 
-        //also need to set it's rotation so it faces the camera
-        t.setAttribute('rotation', `0 ${90 - thetaDeg} 0`);
+        // t.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
+        // //also need to set it's rotation so it faces the camera
+        // t.setAttribute('rotation', `0 ${newRotY} 0`);
 
-        // console.log(`Placed pano at x:${newPos.x.toFixed(2)} y:${newPos.y.toFixed(2)} z:${newPos.z.toFixed(2)} (r:${r.toFixed(2)} θ:${thetaDeg.toFixed(1)}° yOffset:${yOffset.toFixed(2)})`);
+        console.log(`New position: x=${newPos.x.toFixed(2)}, y=${newPos.y.toFixed(2)}, z=${newPos.z.toFixed(2)}, rotY=${newRotY.toFixed(1)}`);
 
-        // Yaw the rig toward the pano (VR-friendly; doesn't fight head)
-        if (this.data.faceRig && this.rig) {
-          const rigPos = new THREE.Vector3(); this.rig.object3D.getWorldPosition(rigPos);
-          const dx = newPos.x - rigPos.x, dz = newPos.z - rigPos.z;
-          const yawDeg = Math.atan2(dx, dz) * 180 / Math.PI;
-          const rot = this.rig.getAttribute('rotation') || { x: 0, y: 0, z: 0 };
-          this.rig.setAttribute('rotation', { x: rot.x, y: yawDeg, z: rot.z });
-        }
+        // // Yaw the rig toward the pano (VR-friendly; doesn't fight head)
+        // if (this.data.faceRig && this.rig) {
+        //   const rigPos = new THREE.Vector3(); this.rig.object3D.getWorldPosition(rigPos);
+        //   const dx = newPos.x - rigPos.x, dz = newPos.z - rigPos.z;
+        //   const yawDeg = Math.atan2(dx, dz) * 180 / Math.PI;
+        //   const rot = this.rig.getAttribute('rotation') || { x: 0, y: 0, z: 0 };
+        //   this.rig.setAttribute('rotation', { x: rot.x, y: yawDeg, z: rot.z });
+        // }
 
         // HUD
         // if (this.data.showHUD){
@@ -443,7 +472,7 @@
 
       <!-- Camera -->
       <a-entity id="head" camera look-controls cursor="rayOrigin: mouse; fuse: false"
-        raycaster="objects: .ui-interactive, .ui-hitbox" position="0 1.6 0"></a-entity>
+        raycaster="objects: .ui-interactive, .ui-hitbox" position="0 1 1"></a-entity>
 
       <!-- Hands / lasers -->
       <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .ui-interactive, .ui-hitbox"></a-entity>
@@ -461,21 +490,42 @@
     <!-- for reference a sphere at the center-->
     <!-- <a-sphere position="0 0 0" radius="0.25" color="blue"></a-sphere> -->
 
+
+
+
+    <a-assets>
+      <img id="sky" src="photos/sky.jpeg">
+    </a-assets>
+    <a-sky src="#sky"></a-sky>
+
+
+
     <a-scene>
-      <!-- arrow body -->
-      <a-cylinder position="0 0.125 0" radius="0.02" height="0.25" color="blue"></a-cylinder>
+      <!-- z axis -->
+      <a-cylinder position="0 0 0" rotation="90 0 0" radius="0.02" height="100" color="blue"></a-cylinder>
+      <!-- x axis -->
+      <a-cylinder position="0 0 0" rotation="0 0 90" radius="0.02" height="100" color="red"></a-cylinder>
 
       <!-- arrowhead -->
-      <a-cone position="0 0.25 0" radius-bottom="0.05" radius-top="0" height="0.1" color="blue"
-        rotation="90 180 0"></a-cone>
+      <!-- <a-cone position="0 0 0" radius-bottom="0.05" radius-top="0" height="0.1" color="blue"
+        rotation="90 180 0"></a-cone> -->
     </a-scene>
 
 
 
     <!-- Cylindrical panorama WITH ID -->
-    <a-cylinder id="pano" position="0 0 0" rotation="0 90 0" radius="5" height="3" theta-length="180" open-ended="true"
+    <a-cylinder id="pano" position="0 0 -10" rotation="0 90 0" radius="5" height="3" theta-length="180" open-ended="true"
       side="back" src="photos/IMG_0466-Pano.jpg">
     </a-cylinder>
+
+    <!-- for debug, a 360 degree cylinder for reference-->
+     <a-cylinder id="pano_ghost" position="0 0 -10" rotation="0 90 0" radius="5" height=".1" theta-length="360" open-ended="false"
+      side="back" color="grey" opacity="0.2">
+    </a-cylinder>
+
+    <!-- for debug, a dot at the "position" of the pano-->
+    <a-sphere id="pano_position_marker" position="0 0 -10" radius="0.1" color="red"></a-sphere>
+
 
     <!-- MENU PANEL (toggled with Space/A) -->
     <a-entity id="menuPanel" visible="false" geometry="primitive: plane; width: 1.8; height: 1.2"
