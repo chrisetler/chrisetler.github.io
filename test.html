@@ -132,24 +132,24 @@
     });
 
     // ---------- Locomotion manager (gamepad only so WASD is free) ----------
-    AFRAME.registerComponent('locomotion-manager', {
-      schema: { mode: { default: 'fly' } },
-      init() { this.head = document.querySelector('#head'); this.mc = this.el.components['movement-controls']; this.setMode(this.data.mode); },
-      setMode(mode) {
-        if (mode === 'fly' && this.mc) {
-          this.mc.pause();
-          this.el.setAttribute('movement-controls', 'camera: #head; controls: gamepad; fly: true; speed: 2'); this.mc.play();
-        }
-        this.data.mode = mode; this.el.emit('locomotionmodechanged', { mode });
-      },
-      resetView() {
-        this.el.setAttribute('position', '0 0 0'); this.el.setAttribute('rotation', '0 0 0');
-        const head = this.head; if (head) {
-          head.setAttribute('rotation', '0 0 0');
-          const lc = head.components['look-controls']; if (lc && lc.yawObject && lc.pitchObject) { lc.yawObject.rotation.y = 0; lc.pitchObject.rotation.x = 0; }
-        }
-      }
-    });
+    // AFRAME.registerComponent('locomotion-manager', {
+    //   schema: { mode: { default: 'fly' } },
+    //   init() { this.head = document.querySelector('#head'); this.mc = this.el.components['movement-controls']; this.setMode(this.data.mode); },
+    //   setMode(mode) {
+    //     if (mode === 'fly' && this.mc) {
+    //       this.mc.pause();
+    //       this.el.setAttribute('movement-controls', 'camera: #head; controls: gamepad; fly: true; speed: 2'); this.mc.play();
+    //     }
+    //     this.data.mode = mode; this.el.emit('locomotionmodechanged', { mode });
+    //   },
+    //   resetView() {
+    //     this.el.setAttribute('position', '0 0 0'); this.el.setAttribute('rotation', '0 0 0');
+    //     const head = this.head; if (head) {
+    //       head.setAttribute('rotation', '0 0 0');
+    //       const lc = head.components['look-controls']; if (lc && lc.yawObject && lc.pitchObject) { lc.yawObject.rotation.y = 0; lc.pitchObject.rotation.x = 0; }
+    //     }
+    //   }
+    // });
 
     // ---------- Wire menu buttons ----------
     AFRAME.registerComponent('menu-actions', {
@@ -157,8 +157,8 @@
       init() {
         const rig = this.data.rig, modeLabel = this.data.modeLabel;
         const resetBtn = this.el.querySelector('#btnReset'), modeBtn = this.el.querySelector('#btnMode');
-        resetBtn.addEventListener('clicked', () => { rig.components['locomotion-manager'].resetView(); });
-        modeBtn.addEventListener('clicked', () => { const lm = rig.components['locomotion-manager']; lm.setMode('fly'); if (modeLabel) modeLabel.setAttribute('value', 'Mode: Fly'); });
+        // resetBtn.addEventListener('clicked', () => { rig.components['locomotion-manager'].resetView(); });
+        // modeBtn.addEventListener('clicked', () => { const lm = rig.components['locomotion-manager']; lm.setMode('fly'); if (modeLabel) modeLabel.setAttribute('value', 'Mode: Fly'); });
         if (modeLabel) modeLabel.setAttribute('value', 'Mode: Fly');
       }
     });
@@ -452,7 +452,7 @@
 <body>
   <a-scene>
     <!-- RIG (gamepad locomotion only, so WASD is free for polar placement) -->
-    <a-entity id="rig" locomotion-manager menu-toggle pano-controller
+    <a-entity id="rig" menu-toggle pano-controller
       polar-placement="target: #pano; hudId: polarHUD; r: 0; thetaDeg: 0; yOffset: 0; faceRig: true"
       pano-joystick-controls="target: #pano">
 
