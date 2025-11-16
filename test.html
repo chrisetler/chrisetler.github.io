@@ -338,6 +338,7 @@
 
 
     // ---------- Pano joystick controls (Meta Quest thumbsticks) ----------
+    // ---------- Pano joystick controls (Meta Quest thumbsticks) ----------
     AFRAME.registerComponent('pano-joystick-controls', {
       schema: {
         target: { type: 'selector', default: '#pano' }
@@ -356,20 +357,38 @@
         const leftHand = document.querySelector('#leftHand');
         const rightHand = document.querySelector('#rightHand');
 
-        if (leftHand) {
-          leftHand.addEventListener('thumbstickmoved', (evt) => {
-            // evt.detail = {x, y}
-            this.leftStick.x = evt.detail.x || 0;
-            this.leftStick.y = evt.detail.y || 0;
-          });
-        }
+        const attachThumbstickListener = (handEl, which) => {
+          if (!handEl) return;
 
-        if (rightHand) {
-          rightHand.addEventListener('thumbstickmoved', (evt) => {
-            this.rightStick.x = evt.detail.x || 0;
-            this.rightStick.y = evt.detail.y || 0;
-          });
-        }
+          const handler = (evt) => {
+            const x = evt.detail.x || 0;
+            const y = evt.detail.y || 0;
+            if (which === 'left') {
+              this.leftStick.x = x;
+              this.leftStick.y = y;
+            } else {
+              this.rightStick.x = x;
+              this.rightStick.y = y;
+            }
+            // One-time debug:
+            // console.log(which, 'thumbstick moved', x.toFixed(2), y.toFixed(2));
+          };
+
+          // If meta-touch-controls is already there, just attach:
+          if (handEl.components['meta-touch-controls']) {
+            handEl.addEventListener('thumbstickmoved', handler);
+          } else {
+            // Wait for it to initialize
+            handEl.addEventListener('componentinitialized', (e) => {
+              if (e.detail.name === 'meta-touch-controls') {
+                handEl.addEventListener('thumbstickmoved', handler);
+              }
+            });
+          }
+        };
+
+        attachThumbstickListener(leftHand, 'left');
+        attachThumbstickListener(rightHand, 'right');
 
         console.log('pano-joystick-controls initialized');
       },
@@ -382,21 +401,18 @@
         if (!pos || !rot) return;
 
         const deltaSec = dt / 1000;
-
         let changed = false;
 
         // --- LEFT STICK: forward/back + rotate (W/S + A/D) ---
         const lx = this.leftStick.x;
         const ly = this.leftStick.y;
 
-        // forward/back on z
         if (Math.abs(ly) > this.deadzone) {
           // stick up (y < 0) -> move pano toward camera (positive z)
           pos.z += -ly * this.moveSpeed * deltaSec;
           changed = true;
         }
 
-        // yaw rotation
         if (Math.abs(lx) > this.deadzone) {
           // stick right (x > 0) -> rotate pano right (negative yaw)
           rot.y += -lx * this.rotateSpeed * deltaSec;
@@ -414,7 +430,6 @@
 
         if (!changed) return;
 
-        // Clamp z so the pano doesn't pass "through" itself
         const panoRadius = this.target.getAttribute('radius');
         if (panoRadius != null && !isNaN(panoRadius)) {
           if (pos.z > panoRadius - 0.05) {
@@ -422,10 +437,7 @@
           }
         }
 
-        if (
-          isNaN(pos.x) || isNaN(pos.y) || isNaN(pos.z) ||
-          isNaN(rot.y)
-        ) {
+        if (isNaN(pos.x) || isNaN(pos.y) || isNaN(pos.z) || isNaN(rot.y)) {
           console.warn('pano-joystick-controls: NaN position/rotation, ignoring update');
           return;
         }
@@ -433,17 +445,14 @@
         this.target.setAttribute('position', pos);
         this.target.setAttribute('rotation', `0 ${rot.y} 0`);
 
-        // Keep your markers in sync
         const pano_marker = document.querySelector('#pano_position_marker');
         if (pano_marker) pano_marker.setAttribute('position', pos);
 
         const pano_ghost = document.querySelector('#pano_ghost');
         if (pano_ghost) pano_ghost.setAttribute('position', pos);
-
-        // Uncomment if you want spammy logs:
-        // console.log(`Pano (sticks): x=${pos.x.toFixed(2)}, y=${pos.y.toFixed(2)}, z=${pos.z.toFixed(2)}, rotY=${rot.y.toFixed(1)}`);
       }
     });
+
 
 
   </script>
@@ -462,11 +471,11 @@
         raycaster="objects: .ui-interactive, .ui-hitbox" position="0 1 1"></a-entity>
 
       <!-- Hands / lasers -->
-      <a-entity id="leftHand" meta-touch-controls="hand: left" laser-controls="hand: left"
-        raycaster="objects: .ui-interactive, .ui-hitbox"></a-entity>
+      <a-entity id="leftHand" meta-touch-controls="hand: left" raycaster="objects: .ui-interactive, .ui-hitbox"
+        line="color: #FFF; opacity: 0.9"></a-entity>
 
-      <a-entity id="rightHand" meta-touch-controls="hand: right" laser-controls="hand: right"
-        raycaster="objects: .ui-interactive, .ui-hitbox"></a-entity>
+      <a-entity id="rightHand" meta-touch-controls="hand: right" raycaster="objects: .ui-interactive, .ui-hitbox"
+        line="color: #FFF; opacity: 0.9"></a-entity>
 
 
 
